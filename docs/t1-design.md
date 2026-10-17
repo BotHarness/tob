@@ -187,7 +187,7 @@ flowchart TB
 
 ### 追加只读核验：2026-10-17
 
-本轮由 Human 完成人工准备后，Agent 在本机受保护进程读取保存的输入，执行官方 API GET 与 MCP 查询；未创建资源、发信、修改云配置或部署。秘密未进入命令参数、输出或公开文档。原始账号/资源 ID 留在本机，公开结果如下。
+以下为首个增量开始前的只读核验记录：Human 完成人工准备后，Agent 在本机受保护进程读取保存的输入，执行官方 API GET 与 MCP 查询；未创建资源、发信、修改云配置或部署。秘密未进入命令参数、输出或公开文档。原始账号/资源 ID 留在本机，公开结果如下。
 
 | 项目 | 实际观察 | 可以证明 / 不能证明 |
 | --- | --- | --- |
@@ -197,19 +197,19 @@ flowchart TB
 | key 有效性 | 本机读取 WORKOS_API_KEY，仅发往 api.workos.com；GET /user_management/users?limit=1 返回 HTTP 200，用户列表为空 | 已验证该 key 可读取用户列表；空列表或 HTTP 200 本身不能证明环境归属，也不证明写权限 |
 | key 环境归属 | 请求窗口为 14:34:06.214–14:34:06.749 UTC；随后 TOB Staging 内名为 Tob 的 key 的 lastUsedAt 从 14:31:54.106 更新为 14:34:06.729 UTC；其 applicationId 指向上述已核验应用 | **使用记录关联证据**：时间落在本次请求窗口且应用/环境映射吻合；不是 API 直接返回凭证归属，不是密钥全文比对，也不保证并发使用时可以唯一归因 |
 
-仍未核验 Worker Secrets 注入、Webhook 签名秘密、云写权限及真实登录/部署。上述关联证据保留原等级，不改写为“归属直接证明”；将来有并发调用、时间未更新或映射不明确时应报告无法确认，不能靠空数据/名称推断。本轮不重查此前所有注册/角色开关，前表仍是此前时间点的观察。
+该只读核验时点尚未核验 Worker Secrets 注入、Webhook 签名秘密、云写权限及真实登录/部署；后续 UAT 增量证据单列，不覆盖这里的历史证据。上述关联证据保留原等级，不改写为“归属直接证明”；将来有并发调用、时间未更新或映射不明确时应报告无法确认，不能靠空数据/名称推断。本轮不重查此前所有注册/角色开关，前表仍是此前时间点的观察。
 
 本机 PREPARATION_STATUS 仍为 inputs_saved_unverified：它是离线向导的产物状态，不被这次人工只读核验改写为部署就绪。更换 key、WorkOS 环境/application、Cloudflare 账号或 CI 凭证后需重新核验，不能直接沿用本机这份证据。官方说明确认环境 key 的请求按所属环境隔离，但未提供此次响应中的直接环境证明：[API authentication](https://workos.com/docs/reference/api-authentication)。
 
 ### UAT / Prod 部署合同
 
-采用两个 GitHub Environments：`uat` 与 `production`（界面可称 Prod），同名 Secrets/Variables 按环境隔离；本地开发不等于第三套共享云环境。UAT 计划使用已核验的 TOB WorkOS Staging，Prod 必须独立使用 Production；Cloudflare Worker、D1、DO namespace、实例 ID/origin、Webhook 与运行秘密各自独立。当前尚未创建或配置两条部署流水线及 GitHub Secrets。
+采用两个 GitHub Environments：`uat` 与 `production`（界面可称 Prod），同名 Secrets/Variables 按环境隔离；本地开发不等于第三套共享云环境。UAT 计划使用已核验的 TOB WorkOS Staging，Prod 必须独立使用 Production；Cloudflare Worker、D1、DO namespace、实例 ID/origin、Webhook 与运行秘密各自独立。首个增量已创建 UAT 流水线与环境级 CI token；Prod 流水线、WorkOS 运行 Secrets 仍未创建/注入。
 
 先本地推进 T1，再经放行验证 UAT；Prod 仅晋级已通过 UAT/Human QA 的确切 commit，不随文档/main 推送自动发布。自部署可只启用一套环境，不要求购买/启用生产才能开发。配置字段、凭证交接、发布与拒绝条件见 [UAT / Prod 部署约定](https://github.com/BotHarness/tob/blob/main/docs/deployment-environments.md)。
 
 ### 本地开始与远端放行的区别
 
-Human 已同意下一步在本地按 T1 → T2 → T3 → T4 → T5 推进；本轮仍只更新方案和验收，未开始服务实现。五项缺口是 T1 的交付门槛，不要求先完成所有云端写入才能开始本地代码。
+Human 已授权推进 T1 首个本地/UAT 增量；T2–T5 仍等待此前切片的完整验证与反馈。五项缺口是 T1 的交付门槛，不要求先完成所有云端写入才能开始本地代码。
 
 | 何时解决 | 剩余事项 |
 | --- | --- |
