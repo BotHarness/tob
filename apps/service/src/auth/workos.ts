@@ -3,9 +3,9 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 export class AuthenticationError extends Error {}
 export async function verifyHumanToken(header: string | undefined, clientId: string, issuer: string) {
   if (!header || !/^Bearer [^\s]+$/.test(header) || header.length > 16384) throw new AuthenticationError("INVALID_TOKEN");
-  // T1 supports the standard WorkOS issuer only. Neither headers nor JWT fields
+  // T1 supports the client-specific WorkOS issuer only. Neither headers nor JWT fields
   // can choose the issuer, JWKS URL or client ID.
-  if (!/^client_[a-zA-Z0-9]+$/.test(clientId) || issuer !== "https://api.workos.com/") throw new Error("INVALID_AUTH_CONFIGURATION");
+  if (!/^client_[a-zA-Z0-9]+$/.test(clientId) || issuer !== `https://api.workos.com/user_management/${clientId}`) throw new Error("INVALID_AUTH_CONFIGURATION");
   const keySet = createRemoteJWKSet(new URL(`https://api.workos.com/sso/jwks/${clientId}`), { timeoutDuration: 5000 });
   try {
     const { payload } = await jwtVerify(header.slice(7), keySet, { issuer, algorithms: ["RS256"], requiredClaims: ["sub", "sid", "exp", "iat"] });
@@ -17,6 +17,6 @@ export async function verifyHumanToken(header: string | undefined, clientId: str
   } catch (error) {
     // Provider failures are unavailable, not an invitation to bypass auth.
     if (error instanceof TypeError || (error instanceof Error && ["ERR_JWKS_TIMEOUT", "ERR_JOSE_GENERIC"].includes((error as { code?: string }).code ?? ""))) throw new Error("IDENTITY_PROVIDER_UNAVAILABLE");
-    throw new AuthenticationError("INVALID_TOKEN");
+    throw new AuthenticationError("INVALID_TOKEN", { cause: error });
   }
 }

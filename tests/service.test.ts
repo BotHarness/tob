@@ -68,7 +68,7 @@ function mockKeys() {
     return Response.json({ keys: [publicKey] });
   });
 }
-const token = (claims: JWTPayload = {}) => new SignJWT({ sub: "user_admin", sid: "session_fixture", iss: "https://api.workos.com/", iat: Math.floor(Date.now()/1000), exp: Math.floor(Date.now()/1000)+300, ...claims }).setProtectedHeader({ alg: "RS256", kid: "test-key" }).sign(keyPair.privateKey);
+const token = (claims: JWTPayload = {}) => new SignJWT({ sub: "user_admin", sid: "session_fixture", iss: "https://api.workos.com/user_management/client_local", iat: Math.floor(Date.now()/1000), exp: Math.floor(Date.now()/1000)+300, ...claims }).setProtectedHeader({ alg: "RS256", kid: "test-key" }).sign(keyPair.privateKey);
 const authenticated = async (claims: JWTPayload = {}) => request("/api/me", { headers: { Authorization: "Bearer " + await token(claims) } });
 const initialize = (userId = "user_admin", hash = "a".repeat(64)) => env.INSTANCE_DB.prepare(INITIALIZE_SQL).bind("test-deployer", hash, userId, "2026-10-18T00:00:00Z").run();
 
@@ -80,9 +80,9 @@ it("requires valid signature and claims, then the durable policy/receipt/active 
   expect(accepted.status).toBe(200);
   expect(await accepted.json()).toEqual({ userId: "user_admin", instanceId: "tob-local", instanceRole: "admin", capabilities: ["instance:read-self"] });
   expect((await authenticated({ sub: "user_other" })).status).toBe(403);
-  for (const claims of [{ iss: "https://other.example/" }, { exp: 1 }, { sid: undefined }, { aud: "client_other" }, { azp: "client_other" }, { sub: "agent_untrusted" }]) expect((await authenticated(claims)).status).toBe(401);
+  for (const claims of [{ iss: "https://other.example/" }, { iss: "https://api.workos.com/" }, { iss: "https://api.workos.com/user_management/client_other" }, { exp: 1 }, { sid: undefined }, { aud: "client_other" }, { azp: "client_other" }, { sub: "agent_untrusted" }]) expect((await authenticated(claims)).status).toBe(401);
   const otherKey = await generateKeyPair("RS256");
-  const forged = await new SignJWT({ sub: "user_admin", sid: "session_fixture" }).setProtectedHeader({ alg: "RS256", kid: "test-key" }).setIssuer("https://api.workos.com/").setIssuedAt().setExpirationTime("5m").sign(otherKey.privateKey);
+  const forged = await new SignJWT({ sub: "user_admin", sid: "session_fixture" }).setProtectedHeader({ alg: "RS256", kid: "test-key" }).setIssuer("https://api.workos.com/user_management/client_local").setIssuedAt().setExpirationTime("5m").sign(otherKey.privateKey);
   expect((await request("/api/me", { headers: { Authorization: "Bearer " + forged } })).status).toBe(401);
   await env.INSTANCE_DB.prepare("UPDATE instance_admin SET status='revoked'").run();
   expect((await authenticated()).status).toBe(403);
