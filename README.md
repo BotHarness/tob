@@ -135,3 +135,5 @@ The broader plan includes inbound webhooks and invitations for additional humans
 Please discuss scope against the specification before starting implementation. Keep HTTP/CLI and UI permissions consistent, and report real runtime evidence separately from simulations.
 
 The project is intended for open-source release. The license is still to be selected; this planning bootstrap does not silently choose one.
+
+Mobile UAT configuration/QR export and the native verification checklist: [T1 mobile session](docs/t1-mobile-session.md).

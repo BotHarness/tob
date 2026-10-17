@@ -18,7 +18,7 @@ app.onError((_error, c) => {
   return c.json({ error: { code: "STORAGE_UNAVAILABLE" } }, 503);
 });
 const api = app
-  .get("/.well-known/open-cloud-groups", (c) => c.json(publicInstance({ instanceId: c.env.INSTANCE_ID, environment: c.env.DEPLOYMENT_ENV, server: c.env.PUBLIC_BASE_URL, clientId: c.env.WORKOS_CLIENT_ID, issuer: c.env.WORKOS_ISSUER, authkitDomain: c.env.WORKOS_AUTH_DOMAIN })))
+  .get("/.well-known/open-cloud-groups", (c) => c.json(publicInstance({ instanceId: c.env.INSTANCE_ID, environment: c.env.DEPLOYMENT_ENV, server: c.env.PUBLIC_BASE_URL, clientId: c.env.WORKOS_CLIENT_ID, issuer: c.env.WORKOS_ISSUER, authkitDomain: c.env.WORKOS_AUTH_DOMAIN, mobileRedirectUri: c.env.MOBILE_REDIRECT_URI })))
   .post("/api/auth/logout", async (c) => {
     let identity;
     try { identity = await verifyHumanToken(c.req.header("Authorization"), c.env.WORKOS_CLIENT_ID, c.env.WORKOS_ISSUER); }

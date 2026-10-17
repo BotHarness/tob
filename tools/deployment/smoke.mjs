@@ -19,7 +19,7 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
     assert.deepEqual(health.body, { service: 'tob', environment: 'uat', instanceId: target.instanceId, releaseSha: target.releaseSha, businessEnabled: false });
     const discovery = await get('/.well-known/open-cloud-groups');
     assert.equal(discovery.status, 200);
-    const expected = publicInstance({ instanceId: target.instanceId, environment: 'uat', server: target.publicBaseUrl, clientId: target.workosClientId, issuer: target.workosIssuer, authkitDomain: target.authkitDomain });
+    const expected = publicInstance({ instanceId: target.instanceId, environment: 'uat', server: target.publicBaseUrl, clientId: target.workosClientId, issuer: target.workosIssuer, authkitDomain: target.authkitDomain, mobileRedirectUri: target.mobileRedirectUri });
     assert.equal(connectionKey(parseInstance(discovery.body)), connectionKey(expected));
     assert.equal((await get('/api/auth/logout', 'POST')).status, 401);
     const ready = await get('/readyz');

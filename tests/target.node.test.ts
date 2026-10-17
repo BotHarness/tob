@@ -20,3 +20,10 @@ test("UAT issuer must belong to the configured application", () => {
     assert.throws(() => resolveTarget("uat", { ...publicFixture, WORKOS_ISSUER: issuer }), /INVALID_DEPLOYMENT_CONFIG:WORKOS_ISSUER/);
   }
 });
+
+test('mobile callback opt-in is UAT-only and exact; local never inherits it', () => {
+  const env = { ...publicFixture, MOBILE_REDIRECT_URI: 'ai.botharness.deepseekbot.dev:/oauth2redirect' };
+  assert.equal(resolveTarget('uat', env).mobileRedirectUri, env.MOBILE_REDIRECT_URI);
+  assert.equal(resolveTarget('development', env).mobileRedirectUri, '');
+  assert.throws(() => resolveTarget('uat', { ...env, MOBILE_REDIRECT_URI: 'https://other.test/callback' }), /INVALID_MOBILE_CALLBACK/);
+});

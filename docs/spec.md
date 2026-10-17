@@ -300,3 +300,8 @@ T1 已记录领取并启动首个本地/UAT 增量；完整 T1 验收未完成�
 本次审查修订依据：[WorkOS roles](https://workos.com/docs/authkit/roles-and-permissions)、[WorkOS invite-only](https://workos.com/docs/authkit/invite-only-signup)、[RFC 8252 §7.1](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.1)、[RFC 9700 §4.9.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.9.1)。仅更新设计与验收，不启动实施。
 
 部署自动化依据：[Cloudflare cf](https://developers.cloudflare.com/cf/)、[cf 部署](https://developers.cloudflare.com/cf/projects/)、[WorkOS CLI](https://workos.com/docs/cli)、[WorkOS MCP 权限与限制](https://workos.com/docs/mcp)。仅已公开支持的操作可规划为自动步骤，具体版本与环境覆盖仍须 T1 验证。
+
+
+## T1 mobile session increment — 2026-10-18
+
+The bounded UAT mobile path, deployment callback opt-in, public QR export and explicit native acceptance gates are recorded in [T1 mobile session](t1-mobile-session.md). Mobile sign-in is independent of Host pairing. This source increment does not complete T1 or authorize Prod.
