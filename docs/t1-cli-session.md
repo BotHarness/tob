@@ -62,7 +62,28 @@ The CLI always clears its local credentials on logout, including expired-login, 
 
 - Local coverage: real RSA signature verification, private-file import/login/refresh/logout, unknown/mismatched configuration without credential transmission, explicit replacement, name-only reimport, refresh failure/invalid_grant, concurrent refresh refusal, expired-token refresh, polling/backoff/denial/cancellation, private permissions and symlink refusal.
 - Worker coverage: fixed public discovery, anonymous logout refusal, signed own-session selection despite a spoofed request body, provider failure, and previous administrator/bootstrap tests.
-- Live UAT: pending exact-head deployment, operator-verified export, real product CLI import → Human device approval → `whoami` → `refresh` → `logout`, post-logout refusal and independent WorkOS readback. Do not infer this from fixture tests or a deployed discovery endpoint.
+- Live UAT: verified on 2026-10-18 JST; details and exact deployed source below. This qualifies the CLI increment only, not the phone/organization T1 path.
 - Phone/QR/native callbacks, organizations, multi-device Human QA, measured revocation propagation and Production remain outside this increment.
 
 References: [WorkOS device login and public refresh](https://workos.com/docs/authkit/cli-auth), [refresh resilience](https://workos.com/docs/authkit/session-resilience), [session revocation](https://workos.com/docs/reference/authkit/session).
+
+## Live UAT evidence — 2026-10-18 JST
+
+Implementation [PR #11](https://github.com/BotHarness/tob/pull/11), bounded diagnostics [PR #12](https://github.com/BotHarness/tob/pull/12), and runtime fix [PR #13](https://github.com/BotHarness/tob/pull/13) are merged. Exact source deployed and verified: `5c178595c5adf4c4eab65df4dd9fcfb56cd06fbc`; [UAT checks, deployment and smoke](https://github.com/BotHarness/tob/actions/runs/39051521846) succeeded. Later documentation changes do not imply another deployment.
+
+| Path | Observed result |
+| --- | --- |
+| Trusted handoff | Authenticated provider control-plane checks, independently compared deployment/public discovery, public-file export and actual CLI import passed. Configuration remained unchanged across the fix deployment. |
+| Human device authorization | The Human approved the product CLI device request; signed identity and UAT administrator readback passed. Expired requests failed closed and were replaced explicitly. |
+| Product CLI identity and refresh | `whoami` returned the initialized administrator; `refresh` rotated the refresh token while preserving the verified user and session. |
+| Product CLI logout | `localLoggedOut: true`, `remoteRevoked: true`; independent WorkOS readback confirmed only this session disappeared. Other listed sessions were unchanged. |
+| After logout | Local credentials absent; `whoami` returned `NOT_LOGGED_IN`; the revoked refresh token returned HTTP 400 `invalid_grant`; repeated logout was idempotent. |
+| Cleanup | The diagnostic token copy was removed after revocation; the actual CLI credential store has no session. Log streaming ended. No secrets or private identity values are published. |
+
+The first runtime logout failed with HTTP 503. UAT diagnostics narrowed it to `provider_transport/TypeError`; native request construction in the pinned workerd reproduced rejection of `redirect: "error"`. The earlier network mock did not construct a native Request, so it missed this runtime incompatibility. The fix uses `manual` and refuses non-2xx responses, including all redirects, without forwarding the server key. Handler regression coverage now includes native Request validation and a refused 302 destination. Node CLI requests retain their supported redirect-error behavior.
+
+The successful final replay used the same Human-approved session, restored from a private diagnostic copy after prior failed logout had correctly removed the normal local file. Every reuse validated the pinned configuration and signed identity; it did not create another identity or bypass authentication. The final pass drove the actual product CLI and independently queried WorkOS. The copy is now deleted.
+
+Checks for this source: typecheck/build, 13 workerd tests, 16 Node tests, plus 2 wizard tests in CI. Live configuration-drift, crash/power-loss, cross-device and native-mobile scenarios were not run; their source tests/design must not be described as cloud or Human QA evidence. WorkOS access JWTs may remain valid until expiry after revocation; immediate access-token invalidation remains a later T1 gate.
+
+Remaining T1 work: mobile QR/import and native PKCE/secure storage, independent phone/CLI organization access, owner/member setup and organization creation/retry, signed identity-event reconciliation and measured revocation behavior, and native Human QA. T1 stays open; T2–T5 and Production are untouched.

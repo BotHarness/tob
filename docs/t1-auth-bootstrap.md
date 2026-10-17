@@ -62,3 +62,5 @@ Local tests cover JWT signature/issuer/audience/expiry, unknown Human and provid
 Trusted configuration import/QR, mobile PKCE callbacks, product CLI login/refresh/logout, organizations/roles/reconciliation, signed events and native Human QA remain pending. The initial invitation may use the configured Google provider in WorkOS Staging; that does not qualify production OAuth credentials.
 
 References: [WorkOS device flow](https://workos.com/docs/authkit/cli-auth), [invite-only signup](https://workos.com/docs/authkit/invite-only-signup), [invitations and accepted identity](https://workos.com/docs/authkit/invitations), [session claims](https://workos.com/docs/authkit/sessions), [client-specific issuer](https://workos.com/docs/cli/emulate), [D1 SQL](https://developers.cloudflare.com/d1/sql-api/sql-statements/).
+
+Subsequent status: trusted file import and product CLI login/refresh/logout are now qualified in the [CLI UAT evidence](t1-cli-session.md#live-uat-evidence--2026-10-18-jst). The historical evidence above remains scoped to the earlier administrator increment.
