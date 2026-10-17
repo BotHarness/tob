@@ -16,6 +16,7 @@ export const memberAccessProjection = sqliteTable("member_access_projection", {
   status: text("status").notNull(),
   role: text("role").notNull(),
   verifiedAt: text("verified_at").notNull(),
+  historyFrom: text("history_from").notNull().default("1970-01-01T00:00:00.000Z"),
 });
 
 export const channelDirectory = sqliteTable("channel_directory", {
@@ -25,5 +26,14 @@ export const channelDirectory = sqliteTable("channel_directory", {
   creatorId: text("creator_id").notNull(),
   creatorType: text("creator_type", { enum: ["human", "agent"] }).notNull(),
   status: text("status", { enum: ["creating", "active"] }).notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+// Provider invitations own activation; this journal owns TOB issuance/reconciliation.
+export const organizationInvitation = sqliteTable("organization_invitation", {
+  operationId: text("operation_id").primaryKey(),
+  inviterId: text("inviter_id").notNull(),
+  email: text("email").notNull(),
+  invitationId: text("invitation_id").unique(),
   createdAt: text("created_at").notNull(),
 });

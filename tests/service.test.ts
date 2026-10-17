@@ -23,7 +23,7 @@ it("migrates both real SQLite bindings and repeated migrations keep data", async
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
   const ready = await request("/readyz");
   expect(ready.status).toBe(200);
-  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 4, orgSchemaVersion: 3, channelSchemaVersion: 1, businessEnabled: true });
+  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 4, orgSchemaVersion: 4, channelSchemaVersion: 1, businessEnabled: true });
   expect(await env.INSTANCE_DB.prepare("SELECT config_version FROM instance_config").first("config_version")).toBe(7);
   await expect(env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (2,'admin_only','admin_only',1)").run()).rejects.toThrow();
 });
@@ -48,9 +48,9 @@ it("Org migrations survive eviction without duplicate application and keep objec
     state.storage.sql.exec("INSERT INTO org_config (org_id,status,policy_json,version) VALUES ('org_fixture','active','{}',1)");
   });
   await evictDurableObject(first);
-  expect(await first.schemaStatus()).toEqual({ schemaVersion: 3 });
+  expect(await first.schemaStatus()).toEqual({ schemaVersion: 4 });
   expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM org_config").one().n)).toBe(1);
-  expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM __drizzle_migrations").one().n)).toBe(3);
+  expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM __drizzle_migrations").one().n)).toBe(4);
   expect(await runInDurableObject(second, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM org_config").one().n)).toBe(0);
 });
 
@@ -449,4 +449,135 @@ it("accepts bounded Unicode messages and paginates durable history without skipp
   const first = await (await call(path)).json() as { messages: { sequence: number }[]; hasMore: boolean; nextCursor: number };
   expect(first.messages).toHaveLength(50);expect(first.hasMore).toBe(true);expect(first.nextCursor).toBe(50);
   expect(await (await call(path + "?after=" + first.nextCursor)).json()).toMatchObject({ messages: [{ sequence: 51 }], nextCursor: 51, hasMore: false });
+});
+
+async function invitationFixture() {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize(); await enableUsers();
+  await env.INSTANCE_DB.prepare("INSERT INTO organization_link (org_id,workos_org_id,lifecycle,created_at) VALUES ('org_invites','org_invites','active','2026-01-01T00:00:00Z')").run();
+  await env.ORGS.getByName('org_invites').initialize('org_invites', 'Invitation workspace');
+  const members = [{ id: 'om_owner', user_id: 'user_a', organization_id: 'org_invites', status: 'active', role: { slug: 'owner' }, created_at: '2026-01-01T00:00:00Z' }];
+  type TestInvite = { id: string; email: string; organization_id: string; inviter_user_id: string; role_slug: string; state: string; accepted_user_id: string | null; created_at: string; expires_at: string; token: string; accept_invitation_url: string };
+  const invites: TestInvite[] = [];
+  const controls = { loseSend: false, loseAccept: false, verified: true, sends: 0, accepts: 0 };
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const u = new URL(String(input));
+    if (u.pathname.includes('/jwks/')) return Response.json({ keys: [publicKey] });
+    if (u.pathname.startsWith('/user_management/users/')) { const id = u.pathname.split('/').at(-1)!; return Response.json({ id, email: id + '@example.test', email_verified: controls.verified }); }
+    if (u.pathname === '/user_management/organization_memberships') return Response.json({ data: members.filter(m => m.status === 'active' && m.user_id === u.searchParams.get('user_id') && (!u.searchParams.has('organization_id') || m.organization_id === u.searchParams.get('organization_id'))), list_metadata: { after: null } });
+    if (u.pathname === '/user_management/invitations') {
+      if (init?.method === 'POST') {
+        controls.sends++;
+        const data = JSON.parse(String(init.body));
+        const v = { ...data, id: 'invitation_' + (invites.length + 1), state: 'pending', accepted_user_id: null, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString(), token: 'private-invitation-token', accept_invitation_url: 'https://private.example/?invitation_token=secret' };
+        invites.push(v);
+        if (controls.loseSend) { controls.loseSend = false; return new Response(null, { status: 503 }); }
+        return Response.json(v);
+      }
+      return Response.json({ data: invites.filter(v => (!u.searchParams.has('email') || v.email === u.searchParams.get('email')) && (!u.searchParams.has('organization_id') || v.organization_id === u.searchParams.get('organization_id'))), list_metadata: { after: null } });
+    }
+    const match = u.pathname.match(/^\/user_management\/invitations\/(invitation_[A-Za-z0-9]+)(?:\/(accept|revoke))?$/);
+    if (match) {
+      const v = invites.find(v => v.id === match[1]);
+      if (!v) return new Response(null, { status: 404 });
+      if (match[2] === 'accept') {
+        controls.accepts++;
+        v.state = 'accepted'; v.accepted_user_id = v.email.split('@')[0];
+        members.push({ id: 'om_invited', user_id: v.accepted_user_id, organization_id: v.organization_id, status: 'active', role: { slug: v.role_slug }, created_at: '2026-01-01T00:00:00Z' });
+        if (controls.loseAccept) { controls.loseAccept = false; return new Response(null, { status: 503 }); }
+      }
+      if (match[2] === 'revoke') v.state = 'revoked';
+      return Response.json(v);
+    }
+    throw Error('unexpected invitation provider call');
+  });
+  const call = async (path: string, user = 'user_a', method = 'GET', body?: unknown, key = 'invitation-operation-0001') => request('/api' + path, { method, headers: { Authorization: 'Bearer ' + await token({ sub: user, org_id: 'org_invites' }), 'Content-Type': 'application/json', 'Idempotency-Key': key }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const send = (email = 'user_b@example.test', key = 'invitation-operation-0001') => call('/organizations/org_invites/invitations', 'user_a', 'POST', { email }, key);
+  return { members, invites, controls, call, send };
+}
+it('owner invites B, only B can accept, B sees channels as member without old messages or owner rights', async () => {
+  const { call, send, controls } = await invitationFixture();
+  const channel = await (await call('/organizations/org_invites/channels', 'user_a', 'POST', { name: 'general' }, 'create-channel-invitation')).json() as { channelId: string };
+  const messages = '/organizations/org_invites/channels/' + channel.channelId + '/messages';
+  expect((await call(messages, 'user_a', 'POST', { text: 'Before B joined' })).status).toBe(200);
+  await runInDurableObject(env.CHANNELS.getByName(channel.channelId), (_instance, state) => { state.storage.sql.exec("UPDATE channel_message SET created_at='2026-01-01T00:00:00.000Z'"); });
+  const created = await send(); expect(created.status).toBe(200);
+  const v = await created.json() as { invitationId: string };
+  expect((await call('/organizations/org_invites/channels', 'user_b')).status).toBe(403);
+  const inbox = await (await call('/invitations', 'user_b')).json();
+  expect(inbox).toMatchObject({ invitations: [{ invitationId: v.invitationId, role: 'member', state: 'pending', organizationName: 'Invitation workspace' }] });
+  expect(JSON.stringify(inbox)).not.toMatch(/private-invitation-token|accept_invitation_url|secret/);
+  expect(await (await call('/invitations', 'user_c')).json()).toMatchObject({ invitations: [] });
+  expect((await call('/invitations/' + v.invitationId + '/accept', 'user_c', 'POST')).status).toBe(403);
+  expect(controls.accepts).toBe(0);
+  expect(await (await call('/invitations/' + v.invitationId + '/accept', 'user_b', 'POST')).json()).toMatchObject({ accepted: true, role: 'member', organizationId: 'org_invites' });
+  expect(await (await call('/organizations', 'user_b')).json()).toMatchObject({ organizations: [{ organizationId: 'org_invites', role: 'member' }] });
+  expect(await (await call('/organizations/org_invites/channels', 'user_b')).json()).toMatchObject({ channels: [{ name: 'general' }] });
+  expect(await (await call(messages, 'user_b')).json()).toMatchObject({ messages: [] });
+  expect((await call(messages, 'user_b', 'POST', { text: 'After joining' }, 'member-message-operation')).status).toBe(200);
+  expect(await (await call(messages, 'user_b')).json()).toMatchObject({ messages: [{ authorId: 'user_b', text: 'After joining', sequence: 2 }] });
+  expect((await call('/organizations/org_invites/channels', 'user_b', 'POST', { name: 'forbidden' })).status).toBe(403);
+  expect((await call('/organizations/org_invites/invitations', 'user_b', 'POST', { email: 'user_c@example.test' })).status).toBe(403);
+  expect((await call('/organizations/org_invites', 'user_b', 'PATCH', { description: 'forbidden', version: 1 })).status).toBe(403);
+  expect(await env.INSTANCE_DB.prepare('SELECT count(*) AS n FROM instance_admin').first('n')).toBe(1);
+});
+it('lost send/accept responses reconcile across eviction without duplicate email or activation', async () => {
+  const { send, call, controls } = await invitationFixture(); controls.loseSend = true;
+  expect((await send()).status).toBe(503);
+  await evictDurableObject(env.ORGS.getByName('org_invites'));
+  const r = await send(); expect(r.status).toBe(200);
+  const v = await r.json() as { invitationId: string };
+  expect((await send()).status).toBe(200); expect(controls.sends).toBe(1);
+  expect((await send('user_c@example.test')).status).toBe(409);
+  controls.loseAccept = true;
+  expect((await call('/invitations/' + v.invitationId + '/accept', 'user_b', 'POST')).status).toBe(503);
+  expect((await call('/invitations/' + v.invitationId + '/accept', 'user_b', 'POST')).status).toBe(200);
+  expect((await call('/invitations/' + v.invitationId + '/accept', 'user_b', 'POST')).status).toBe(200);
+  expect(controls.accepts).toBe(1);
+});
+it('revoked/expired invitations and mismatched accepted identities never grant access', async () => {
+  const { send, call, invites, controls } = await invitationFixture();
+  await send();
+  expect((await call('/organizations/org_invites/invitations/invitation_1/revoke', 'user_b', 'POST')).status).toBe(403);
+  expect((await call('/organizations/org_invites/invitations/invitation_1/revoke', 'user_a', 'POST')).status).toBe(200);
+  expect((await call('/invitations/invitation_1/accept', 'user_b', 'POST')).status).toBe(409);
+  invites[0].state = 'pending'; invites[0].expires_at = '2000-01-01T00:00:00Z';
+  expect((await call('/invitations/invitation_1/accept', 'user_b', 'POST')).status).toBe(409);
+  invites[0].state = 'accepted'; invites[0].accepted_user_id = 'user_c';
+  expect((await call('/invitations/invitation_1/accept', 'user_b', 'POST')).status).toBe(409);
+  expect(controls.accepts).toBe(0);
+});
+it('invitation issuance enforces current owner and rejects forged roles or provider-only invitations', async () => {
+  const { call, send, members, invites, controls } = await invitationFixture();
+  expect((await call('/organizations/org_invites/invitations', 'user_a', 'POST', { email: 'user_b@example.test', role: 'owner' })).status).toBe(400);
+  members[0].role.slug = 'member'; expect((await send()).status).toBe(403);
+  members[0].role.slug = 'owner'; await send();
+  invites.push({ ...invites[0], id: 'invitation_foreign' });
+  expect((await call('/invitations/invitation_foreign/accept', 'user_b', 'POST')).status).toBe(403);
+  expect(await (await call('/invitations', 'user_b')).json()).toMatchObject({ invitations: [{ invitationId: 'invitation_1' }] });
+  controls.verified = false;
+  expect((await call('/invitations/invitation_1/accept', 'user_b', 'POST')).status).toBe(403);
+});
+it('concurrent invitation retries send once; an unknown outcome with no provider match stays reconciliation-required', async () => {
+  const { send, controls, invites } = await invitationFixture();
+  const responses = await Promise.all([send(), send(), send()]);
+  expect(responses.every(r => [200, 409].includes(r.status))).toBe(true);
+  expect(controls.sends).toBe(1);
+  expect((await send()).status).toBe(200);
+  controls.loseSend = true;
+  expect((await send('user_c@example.test', 'invitation-operation-0002')).status).toBe(503);
+  invites.splice(1, 1); // simulate a request whose remote outcome cannot be found
+  expect((await send('user_c@example.test', 'invitation-operation-0002')).status).toBe(409);
+  expect(controls.sends).toBe(2);
+});
+it('first active membership observation persists a conservative history floor and a new membership resets it', async () => {
+  const { members } = await invitationFixture();
+  const org = env.ORGS.getByName('org_invites');
+  const before = Date.now();
+  const first = await org.memberHistory('org_invites', members[0]);
+  expect(Date.parse(first)).toBeGreaterThanOrEqual(before);
+  await evictDurableObject(org);
+  expect(await org.memberHistory('org_invites', members[0])).toBe(first);
+  await runInDurableObject(org, (_instance, state) => { state.storage.sql.exec("UPDATE member_access_projection SET history_from='2000-01-01T00:00:00.000Z'"); });
+  expect(await org.memberHistory('org_invites', members[0])).toBe('2000-01-01T00:00:00.000Z');
+  expect(Date.parse(await org.memberHistory('org_invites', { ...members[0], id: 'om_rejoined' }))).toBeGreaterThanOrEqual(before);
 });

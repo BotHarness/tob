@@ -323,3 +323,7 @@ Owner 在选定组织创建多个频道；活跃成员可列出频道和收发�
 ### Channel HTTP UAT evidence (2026-10-18)
 
 The current evidence record is [Multi-user collaboration — channel HTTP slice](multi-user-collaboration.md#channel-http-slice--uat-verification-2026-10-18-jst). Mobile creation, independent CLI agreement, durable text roundtrip, current owner/member enforcement and session isolation have actual UAT evidence. This does not qualify WebSocket delivery, invitations, Agent work, rejoin/history grants or the remaining T1 identity event gates. Keep T1/T2 open and proceed to the bounded organization invitation slice under the Human's autonomous UAT goal.
+
+### Organization invitation slice
+
+[Organization invitation contract and verification](organization-invitations.md) adds owner-issued member invitations, recipient acceptance and retry reconciliation through the public API/CLI and mobile client. Org schema 4 records issuance and a conservative first-active-observation history floor. Provider email delivery and same-membership reactivation remain distinct gates; this does not grant channel guests full organization membership or complete T1/T2.

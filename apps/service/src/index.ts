@@ -8,6 +8,7 @@ import { publicInstance } from "../../../packages/contracts/instance.ts";
 export { Org } from "./org";
 export { Channel } from "./channel";
 import { channels } from "./channels";
+import { invitations, organizationInvitations } from "./invitations";
 
 const app = new Hono<{ Bindings: Env }>();
 app.use("*", async (c, next) => {
@@ -67,7 +68,7 @@ const withIdentity = api.get("/api/me", async (c) => {
   // reserved so an ordinary organization.create request cannot occupy it.
   return c.json(await createOrganization(c.env, identity.userId, "default-workspace-v1", "My workspace", "user.default-organization"));
 });
-const withOrganizations = withIdentity.route("/api/organizations", organizations).route("/api/organizations", channels);
+const withOrganizations = withIdentity.route("/api/organizations", organizations).route("/api/organizations", channels).route("/api/organizations", organizationInvitations).route("/api/invitations", invitations);
 // No public bootstrap route; unrelated business commands remain closed.
 app.all("/api/*", (c) => c.json({ error: { code: "FEATURE_NOT_AVAILABLE" } }, 503));
 app.notFound((c) => c.json({ error: { code: "NOT_FOUND" } }, 404));
