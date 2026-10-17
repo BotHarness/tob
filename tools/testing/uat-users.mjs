@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { authenticateUser } from './authenticate-user.mjs';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, existsSync, writeFileSync, readFileSync, lstatSync } from 'node:fs';
 import { isAbsolute, join, dirname } from 'node:path';
@@ -54,7 +55,7 @@ try {
     const store = new Store(join(directory, 'cli-' + user.label)); store.putConfig(config);
     if (!store.session(config.instanceId)) {
       phase = 'session-' + user.label;
-      const login = await api('/user_management/authenticate', { client_id: config.auth.clientId, client_secret: key, grant_type: 'password', email: user.email, password: user.password });
+      const login = await authenticateUser({ clientId: config.auth.clientId, key, email: user.email, password: user.password });
       const identity = await verifyHumanToken('Bearer ' + login.access_token, config.auth.clientId, config.auth.issuer);
       assert.equal(identity.userId, user.userId); assert.ok(login.refresh_token);
       store.putSession(config.instanceId, { version: 1, binding: digest(connectionKey(config)), userId: identity.userId, accessToken: login.access_token, refreshToken: login.refresh_token });
