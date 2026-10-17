@@ -73,7 +73,10 @@ flowchart TB
 
 ### 2. 第一条路径的身份与部署合同
 
-- T1 只接入部署者独立核验过的实例。部署者从自己控制的 Cloudflare 与 WorkOS 配置核对并预先固定 API HTTPS origin、WorkOS Client ID、issuer/认证端点与移动回调的组合；不能仅凭目标实例返回的 discovery 或二维码完成核验。手机和 CLI 只使用该已核验组合，未知地址或配置不匹配时在发起登录前拒绝，不向它发送 token；配置变化须重新核验。公开发现仅检查兼容性与一致性，不建立信任。任意陌生实例即插即用不属于 T1。
+- T1 只接入部署者独立核验过的实例。部署者或其已授权的部署 Agent 从已认证的 Cloudflare 与 WorkOS 控制面核对并预先固定 API HTTPS origin、WorkOS Client ID、issuer/认证端点与移动回调的组合；不能仅凭目标实例返回的 discovery 或二维码完成核验。手机和 CLI 只使用该已核验组合，未知地址或配置不匹配时在发起登录前拒绝，不向它发送 token；配置变化须重新核验。公开发现仅检查兼容性与一致性，不建立信任。任意陌生实例即插即用不属于 T1。
+- 部署初始化以 Agent 通过 CLI/API 代办为默认路径：Cloudflare 优先使用 cf，WorkOS 优先使用 CLI，已授权且具备相应操作的 MCP 也可使用。Human 负责账号注册、选择目标账号/环境及管理员身份、供应商登录/OAuth/必要身份验证；授权范围内的配置和检查不逐项再要求人工确认。部署 Agent 不因此成为 TOB 的独立实例管理员，T1 的 Human admin_only 业务准入保持不变。
+- 自动化必须记录工具版本、目标账号/环境、已完成步骤与必要人工项。Cloudflare cf 仍为 beta；具体 bindings、迁移、Secrets、Cron 与 WorkOS 操作覆盖须在 T1 实测。CLI/MCP 暂未支持的开关或秘密交付明确交给 Human，完成后读回核验；不能静默跳过，也不以自动安装器创建的临时环境代替部署者自有环境。
+- WorkOS MCP 不提供创建/轮换 API keys 等敏感凭证，返回秘密会被剥离；首次环境 API key/事件签名秘密交付、关闭公开注册和单角色/默认角色设置的自动化仍须验证。必要秘密经本机私密文件/凭证存储交给部署工具，避免进入模型上下文、普通输出或公开记录。不承诺仅注册和 OAuth 已足以完成全部步骤，也不新增平台代管层。
 - 手机保持系统浏览器 Authorization Code + PKCE，CLI 保持设备授权；不增加认证中转、第二种 Human 会话、DPoP 或自动实例登记机制。手机 OAuth 专用回调定为 `ai.botharness.deepseekbot:/oauth2redirect`，开发版为 `ai.botharness.deepseekbot.dev:/oauth2redirect`，分别精确登记；现有 deepseekbot 导航 scheme 不作为新的 OAuth 回调。state、verifier、已核验实例及回调绑定为一次性事务，仍须真实原生构建验证。
 - 首条路径只启用一种 WorkOS 托管登录方式，建议邮箱密码；CLI 采用受支持的设备授权/浏览器确认流程。不自行接收用户密码来绕过登录。邮箱 OTP、Google、完整登录配置管理保留后续切片；用户名别名不是首片前提。
 - WorkOS 默认邮件替代原 Cloudflare 发 OTP 的默认假设；若后续仍要求 Cloudflare 发信，单独验证自定义邮件集成。当前不配置或发送邮件。
@@ -102,7 +105,7 @@ flowchart TB
 | Org DO / member_access_projection | workos_user_id PK、membership_id、status、role、verified_at | 可重建权限投影；只能按权威身份数据更新 |
 | Org DO / identity_delivery | event_id + target_channel_id 复合 PK、status、attempt_count | 记录哪些群已接受身份变更，防止只发一次内存通知 |
 | Channel DO / channel | channel_id PK 单行、org_id 不可变、name、status、last_seq、acl_version | 本群配置、消息顺序和权限版本 |
-| Channel DO / channel_member | actor_id PK、kind、workos_user_id 可空、owner_user_id 可空、display_name、environment_label、role、status、read_from_seq | Human 与 Agent 的群内身份；CHECK 保证身份字段匹配 kind |
+| Channel DO / channel_member | actor_id PK、kind、workos_user_id 可空、owner_user_id 可空、display_name、environment_label、role、status、read_from_seq | Human 与 Agent 的群内身份；kind 与 role 独立，CHECK 约束身份字段，不硬编码群主只能是 Human；Agent 群主授权留后续 |
 | Channel DO / agent_credential | credential_id PK、actor_id FK、secret_hash、scopes、expires_at、revoked_at | 限群凭证；允许轮换，仅保存秘密校验值 |
 | Channel DO / message | seq PK、message_id UQ、author_actor_id FK、client_message_id、kind、body_json、parent_message_id、request_id、payload_hash、created_at | UQ(author_actor_id, client_message_id)；按 seq 分页 |
 | Channel DO / management_operation | operation_id PK、actor_id、kind、payload_hash、state、result_ref | 凭证签发/撤销等管理操作去重；不存明文秘密 |
@@ -157,6 +160,24 @@ flowchart TB
 - 首条路径至少记录完整消息端到端时延、重试/拒绝/错误率和执行计数。100/1,000 连接负载曲线属于后续容量工作；首片不能据连接上限宣称 100+ Agent 已验证。
 - 本轮不配置 WorkOS、不部署或发送消息。后续实施先取得任务启动授权，并按已有共享设备 QA 流程验证手机。部署、付费企业连接及测试账号操作仍需对应授权。
 
+### 8. 后续群管理切片：Agent 可作为群主
+
+这是已确认的产品方向，排在 T1–T5 首条完整路径之后；本批不提前实现或新增并行任务。T2/T3 的身份/群角色合同不应把管理角色限定为 Human，但首条路径仍使用原有最小授权能力，不提前给普通 Agent 发放群主权限。
+
+- Human / Agent 是身份类型，群主 / 群管理员 / 成员是群内角色；Agent 可以以自己的 actor_id 成为群主或管理员，不冒用 Human 会话，也不伪造 WorkOS Human membership。
+- 授权覆盖指定群及明确管理动作；有效权限同时受角色、凭证范围和组织政策约束。Agent 在已授予范围内可直接修改群设置、移除成员、批准/拒绝入群申请，无需逐次 Human 确认；审批入群随多人加入能力一起交付。
+- 群管理操作统一走 TOB API/CLI；MCP 如需提供，只包装同一命令和权限检查。供应商 cf/WorkOS 管理凭证仅用于授权的部署/控制面操作，普通群主 Bot 无需持有。
+- 入群审批不能授予实例/组织准入、绕过组织成员资格或扩大其他 Agent 的本机工作权限；群主不能自行扩大凭证范围或给自己升为实例/组织管理员。
+- 操作记录保留实际 Agent actor、授权来源、目标与结果。授予者可撤销授权；授权的组织管理者保留群主失效/离线后的接管路径。撤销后旧凭证和已有连接不能继续管理；具体持久字段、管理动作和接管合同在该切片细化，不提前增加 T1 表。
+
+该后续切片的验收目标：
+
+- [ ] 授予 Agent 指定群的管理权限后，它能通过公开 API/CLI 自主完成获授权操作，Human 可看到实际执行者和结果。
+- [ ] 未授权 Agent、跨群操作、超范围动作和自行扩大权限均被拒绝；控制面密钥不下发给群主 Bot。
+- [ ] 多人加入启用后，Agent 可以批准/拒绝符合组织准入条件的入群申请；拒绝或重试不产生错误成员资格，批准也不额外授予旧历史或本机执行权。
+- [ ] 撤销授权阻止新旧连接继续管理；群主 Agent 失效后，由获授权组织管理者接管，操作有可核对记录。
+- [ ] 手机/CLI 与 Agent 调用同一权限合同；无模型调用路径及 Human QA 证明实际群管理结果。
+
 ## Testing Decisions
 
 建议以一个最高层入口为主：**手机/CLI/参考 Agent → 同一公开 HTTP/WebSocket 合同 → 真实持久 owner → 可见结果**。Human 已确认此测试边界。
@@ -164,15 +185,16 @@ flowchart TB
 - 服务合同测试使用真实 Worker/D1/SQLite DO，验证跨组织/群拒绝、消息去重、历史边界、游标及撤权。测试 WorkOS 令牌及事件可使用受控签名 fixture，但必须另有获授权 staging 的真实登录/刷新/撤销证据；fixture 不冒充集成通过。
 - Host 复用既有 Messaging 入站、身份、Outbox/撤权测试与 CLI 同命令先例，不为云适配重写第二套 Messaging。新增用例只覆盖云 actor、来源传递、持久发送和恢复行为。
 - 手机沿用现有群管理网络调用及错误状态测试，另做真实手机无 Host 登录、建群、凭证管理、完整协作和回前台恢复。Node/Web 测试不代替原生回调与安全存储验证。
+- T1 部署验收以 Agent 可重复执行的 CLI/MCP 路径为主，列出 Human 必做与工具不支持的人工项；核验账号/环境、秘密不泄漏、重复运行不误建/误授予及配置读回。由 Agent 从已认证控制面核验的实例同样符合可信前提；仅目标 discovery 自述仍不符合。
 - T1 必测：未核验地址、冒用其他实例 Client ID、核验后配置漂移均在登录/token 发送前被拒绝；未初始化、非 active 管理员及仅有有效 WorkOS token 的用户不能进入业务或建组织；owner 缺失/映射不符不能建组织；跨组织访问仍需 active membership。正式与开发 OAuth 回调精确匹配，旧导航回调不得完成云登录。
 - 每票有自动回归、可运行 CLI 路径、可操作界面与 Human QA。先验证前一条用户行为再扩展下一条，不先交付整层数据库或只交付无后端 UI。
 - 故障注入：云提交后 ACK 丢失、Host 本地提交后通知前崩溃、Agent 开始后结果持久化前崩溃、结果已保存但发送失败、重连/历史重放、过期与撤权。以持久消息、执行计数、公开状态和实际手机结果判断。
 
 ## Out of Scope
 
-T1 不支持任意未核验实例的自动信任，不引入新认证/实例登记协议、通用权限编辑器或额外用户/邀请账本。部署者手工核验是本切片明确的信任前提，不宣称已解决任意自部署实例的自动可信接入。
+T1 不支持任意未核验实例的自动信任，不引入新认证/实例登记协议、通用权限编辑器或额外用户/邀请账本。通过部署者已授权控制面独立核验是本切片明确的信任前提，可由 Agent 代办，不宣称已解决任意自部署实例的自动可信接入。
 
-本批不拆票：邀请另一位仅手机 Human、显式历史授权、完整 OTP/Google/登录管理覆盖、企业 SSO/目录同步、auth.md 自助认领、入站 Webhook、官方收费/额度运营、附件、真实推送以及全面自部署升级/备份。此前确认的相关 MVP 能力仍保留；此次仅推迟到首条路径之后。
+本批不拆票：Agent 群主授权/接管与入群申请审批、邀请另一位仅手机 Human、显式历史授权、完整 OTP/Google/登录管理覆盖、企业 SSO/目录同步、auth.md 自助认领、入站 Webhook、官方收费/额度运营、附件、真实推送以及全面自部署升级/备份。此前确认的相关 MVP 能力仍保留；此次仅推迟到首条路径之后。
 
 不实现 Better Auth 备用路线、Auth DO、独立聊天 Web UI、联邦、VPS/Docker、自建网盘/CRDT、跨机自动接管、全 Host 远控、任意 shell 工作或完整权限设计器。开源服务的独立部署仍依赖部署者配置自己的 WorkOS 云身份服务。
 
@@ -191,3 +213,5 @@ Human 已明确暂不实现。全部挂起为 ready-for-human，明确启动后�
 
 
 本次审查修订依据：[WorkOS roles](https://workos.com/docs/authkit/roles-and-permissions)、[WorkOS invite-only](https://workos.com/docs/authkit/invite-only-signup)、[RFC 8252 §7.1](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.1)、[RFC 9700 §4.9.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.9.1)。仅更新设计与验收，不启动实施。
+
+部署自动化依据：[Cloudflare cf](https://developers.cloudflare.com/cf/)、[cf 部署](https://developers.cloudflare.com/cf/projects/)、[WorkOS CLI](https://workos.com/docs/cli)、[WorkOS MCP 权限与限制](https://workos.com/docs/mcp)。仅已公开支持的操作可规划为自动步骤，具体版本与环境覆盖仍须 T1 验证。

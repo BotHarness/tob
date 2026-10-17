@@ -6,7 +6,7 @@
 
 ## 1. 要确认的结果
 
-部署者使用自己的 Cloudflare 和 WorkOS，并独立核验实例配置。T1 只允许已初始化且 active 的实例管理员进入业务和创建组织。手机没有任何已配对 Host，从已核验实例配置登录、创建自己的组织；CLI 登录同一身份，看到同一组织。两边退出、刷新、组织切换和失权均可验证。
+部署者使用自己的 Cloudflare 和 WorkOS，完成注册、身份验证与授权；部署 Agent 优先通过 CLI/MCP 配置、部署，并从已认证控制面独立核验实例配置。T1 只允许已初始化且 active 的实例管理员进入业务和创建组织。手机没有任何已配对 Host，从已核验实例配置登录、创建自己的组织；CLI 登录同一身份，看到同一组织。两边退出、刷新、组织切换和失权均可验证。
 
 推荐手机采用 AuthKit Authorization Code + PKCE，CLI 采用 AuthKit Device Authorization。登录直接连接 WorkOS，业务访问 Hono Worker。无需 Auth DO、应用密码表或自行签发第二种 Human 会话。
 
@@ -23,7 +23,7 @@ tob/
       src/
       db/d1/             Drizzle schema 与 D1 SQL migrations
       db/org/            Drizzle schema 与 Org DO migrations
-      wrangler.jsonc     资源 bindings、兼容日期、环境、定时任务
+      cloudflare.config.ts  cf 配置：bindings、兼容日期、环境、定时任务
     cli/                 面向用户/管理员的薄 HTTP 客户端
   packages/
     contracts/           请求、响应、错误码、公开发现文档与协议版本
@@ -57,7 +57,7 @@ tob/
 
 T1 不需要 R2、KV、Queues、Cloudflare Tunnel、Cloudflare Access 或邮件发送服务。T2 才增加 Channel DO namespace；R2 在附件切片增加。Cron 与 D1 inbox 足够首片的低频身份事件恢复，暂不增加另一种队列资源。
 
-Cloudflare 资源通过 [bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/)连接；秘密使用 [Worker Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)，补漏可使用 [Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)。本方案建议以 Wrangler 配置和部署说明起步；一键部署按钮后续可减少 Cloudflare 设置，但不能替代部署者的 WorkOS 账号配置。
+Cloudflare 资源通过 [bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/)连接；秘密使用 [Worker Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)，补漏可使用 [Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)。本方案优先采用 cf CLI 与 cloudflare.config.ts，锁定实际验证版本；cf 仍为 beta。若某项操作必须使用 Wrangler，应记录原因与实际配置路径，不让两套项目配置各自成为权威，也不在未经迁移的 Wrangler 项目直接运行 cf 构建/部署。一键部署按钮不是 T1 前提。
 
 WorkOS 自部署模式意味着“业务运行在自己的 Cloudflare，身份仍在 WorkOS 云端”，不等于离线自托管 WorkOS。每个部署使用独立环境/凭证，不能共用 DSB 官方身份库。[WorkOS 自部署说明](https://workos.com/docs/on-prem-deployment)
 
@@ -71,30 +71,69 @@ WorkOS 自部署模式意味着“业务运行在自己的 Cloudflare，身份�
 | 公共认证配置 | WORKOS_CLIENT_ID、受支持 issuer/AuthKit domain、固定移动回调 | Worker vars / 公开发现文档 |
 | 服务端秘密 | WORKOS_API_KEY、WORKOS_WEBHOOK_SECRET | Worker Secrets |
 | 应用政策 | registration_mode=admin_only、org_creation_mode=admin_only、配置版本 | T1 固定两项模式；D1 缺失/非法值拒绝业务管理，不提供策略编辑器 |
-| 资源绑定 | D1 的 INSTANCE_DB、Org DO 的 ORGS | Wrangler 配置，不需要把数据库密钥交给手机 |
+| 资源绑定 | D1 的 INSTANCE_DB、Org DO 的 ORGS | cf 项目配置，不需要把数据库密钥交给手机 |
 | 部署权限 | Cloudflare deploy 凭证 | 部署者机器/CI，不进入业务 App 或普通 CLI 登录配置 |
 | 用户凭证 | Access/refresh token | 手机安全存储、CLI OS 凭证库或明确配置的受限文件存储 |
 
 WorkOS OAuth 设置不假定能靠我们的环境变量自动创建：Google 后续仍需在 WorkOS/provider 完成真实接入配置。T1 保持一个 application 服务手机与 CLI；日后要独立会话策略可拆 application，但保留同一环境的用户/组织。[WorkOS Applications](https://workos.com/docs/authkit/applications)
 
-## 4. 部署者的最短操作路径
+## 4. Agent 优先的自部署与初始化
 
-1. 获取开源仓库，准备自己的 Cloudflare 账号和 WorkOS 环境，选定公开 HTTPS 地址。
-2. 在 WorkOS 设置一种登录方式并关闭公开注册，建立首个部署者用户；可通过 Dashboard 完成首次账号准备。创建或核验 owner/member 单角色配置，member 保持默认；不要求应用实现邀请 UI。
-3. 登记发布版 OAuth 回调 `ai.botharness.deepseekbot:/oauth2redirect`，开发版登记 `ai.botharness.deepseekbot.dev:/oauth2redirect`；不使用 wildcard。登记固定 Sign-out URI，配置身份事件接收地址。
-4. 部署工具创建 Worker/D1/Org DO binding，应用迁移，注入 Worker Secrets，配置 Cron；staging 和 production 分开。初始准入/建组织政策均为 admin_only；初始化完成前业务请求一律拒绝。
-5. 部署者通过受 Cloudflare 账号权限保护的初始化命令，将核验过的 WorkOS user_id 写入 instance_admin。这个命令不是匿名公网“第一个登录者成为管理员”。重复初始化须幂等；恢复另用显式恢复动作并记录审计。
-6. 部署者从自己控制的 Cloudflare 地址配置与 WorkOS Dashboard 独立核对 API HTTPS origin、Client ID、issuer/认证端点、精确回调，形成 T1 的固定可信配置。目标站点自己的 discovery/二维码不作为核验凭据；无须新签名协议或官方登记中心。
-7. 通过该配置登录后，管理员 CLI 执行 doctor：检查实例版本、绑定/迁移、认证配置、角色/单角色模式、admin_only 政策和同步状态。非管理员不得读取内部诊断；诊断不回显秘密。
-8. 手机和 CLI 分别以已初始化管理员登录，用业务 API 创建并查看自己的组织。日常管理经过账号/组织权限检查，不需要部署凭证。
+“部署者负责”表示由部署者选择账号、授权范围并承担实例归属，不表示必须由人逐项操作控制台。Human 完成必要注册/身份验证与 OAuth 后，Agent 通过官方 CLI/API 或已授权 MCP 代办范围内的动作，无需逐项重复确认；这不是授予后续群主 Bot 云账号权限。
 
-初始化工具的实现建议是部署者本机通过 Cloudflare 管理面执行受限 D1 初始化，并核验 WorkOS 用户；它与普通 `tob` 远程业务命令的权限明确分开。恢复实例管理员资格不能恢复/绕过 WorkOS 用户账号认证。
+### 人与 Agent 的分工
+
+| 步骤 | Human 必要参与 | Agent / 工具执行 |
+| --- | --- | --- |
+| 账号与环境 | 注册自己的 Cloudflare/WorkOS 账号；选择目标账号/环境、实例地址、初始化管理员身份与授权范围 | 查询当前已认证账号、环境和可用权限，防止落入其他账号或生产环境 |
+| 工具授权 | 完成 cf 与 WorkOS CLI/MCP 的供应商登录、OAuth、必要 MFA；如团队禁用 MCP/写入则由有权的人开放或选 CLI | 发现受支持命令/操作；CLI 与 MCP 会话分别核验，不以安装配置代替登录成功 |
+| WorkOS 配置 | 只处理官方工具未开放的必要设置；首个管理员按实际流程接受邀请、登录/验证身份 | 配置可支持的登录设置、精确回调、退出地址、owner/member、事件端点；公开注册关闭、single-role/member 默认值须读回核验 |
+| 运行秘密 | 若无法自动获取初始环境 API key/事件签名秘密，放入本机私密文件或凭证存储，不粘贴进聊天 | 部署工具读取受保护输入并注入 Worker Secrets；普通输出、日志及模型上下文不包含秘密 |
+| Cloudflare 资源 | 不要求手工创建每个资源；仅补充工具确实无法完成的授权/必要步骤 | 用 cf 创建/连接 Worker、D1、Org DO binding，执行迁移，配置 Secrets、HTTPS、Cron；记录绑定与实际版本 |
+| 初始化管理员 | 确定要绑定的本人 WorkOS 身份 | 核验 user_id，使用获授权 Cloudflare 管理面执行受限 D1 初始化；幂等写入 active instance_admin，恢复动作单独记录 |
+| 实例独立核验 | 不要求逐字段抄录；权限或归属无法确认时才处理例外 | 从已认证 Cloudflare/WorkOS 管理端交叉核验 origin、Client ID、issuer/认证端点、精确回调，形成固定连接配置 |
+| 诊断与使用 | 手机/CLI 分别完成自己的产品登录，进行 Human QA | 通过管理员业务会话运行 doctor，报告配置/角色/同步状态；两端按同一业务权限建组织 |
+
+工具能力边界必须显式记录：
+
+- WorkOS MCP 继承授权者的 Dashboard 权限，可能被团队禁止写入或访问生产；它不能修改限制自身的 MCP 设置。
+- MCP 不返回秘密，也不创建/轮换 API keys、OAuth client secrets 等凭证。CLI 中组织 API key 管理不能证明可无初始凭证取得环境服务端 API key。首次运行秘密交付保留必要人工路径。
+- 关闭公开注册、single-role 模式与默认 member 的具体自动化操作尚未核实。实施时先检查当前官方 CLI/MCP 支持；未开放则列为明确人工步骤，完成后读回核验，不能跳过检查或使用未公开接口。
+- Human 在供应商页面接受首次邀请/验证身份、注册、OAuth/MFA 是必要交互；角色创建、回调登记、资源创建与部署不是默认人工项。不承诺目前所有环境都只需注册和 OAuth。
+- 控制面授权、TOB 服务端运行秘密、手机/CLI 产品会话是三类不同凭证。初始化恢复只能恢复实例管理员资格，不能绕过 WorkOS 账号认证。
+
+### 执行顺序
+
+1. Human 完成账号准备、目标选择和工具授权；Agent 查询并确认账号/环境、权限与工具版本。
+2. Agent 发现官方工具能力，准备配置与最小必要人工项；可自动化的 WorkOS 设置、首个用户邀请准备与精确回调由工具处理。Human 按需完成供应商身份验证或未开放设置。
+3. Agent 通过 cf 部署 Worker/D1/Org DO、迁移、Secrets 与 Cron。注册/建组织政策固定 admin_only，初始化前拒绝业务访问；秘密缺失等未完成项明确阻止继续。
+4. Agent 用已授权管理面核验指定 WorkOS user_id 并执行幂等管理员初始化。不是匿名公网“第一个登录者成为管理员”。
+5. Agent 从两个已认证控制面核验并固定连接配置；不能只信目标实例 discovery/二维码。配置变化仍须按同一路径重新核验。
+6. Human 分别在手机/CLI 登录；管理员运行 doctor 后通过同一业务 API 创建/查看自己的组织。重复运行部署检查和初始化不应重复建资源、覆盖无关配置或扩大权限；无法确认的中途结果先核对。
+
+```mermaid
+flowchart TB
+  H["Human：注册、选择账号/环境与管理员身份<br/>完成供应商 OAuth / 必要身份验证"]
+  A["部署 Agent：查询已授权管理端<br/>检查工具能力、目标环境与所需配置"]
+  X["Human：仅补必要人工项<br/>首次秘密交付 / 工具未开放设置"]
+  B["部署工具：配置 WorkOS 与 Cloudflare<br/>Worker / D1 / Org DO / Secrets / Cron"]
+  C["部署 Agent：受保护地初始化管理员<br/>从两个已认证控制面核验并固定实例配置"]
+  D["Human：手机与 CLI 各自完成产品登录"]
+  E["系统：校验 token、active instance_admin 与 admin_only<br/>doctor 检查通过后，按组织权限使用"]
+  H --> A
+  A -->|"可自动化"| B
+  A -->|"有未覆盖必要项"| X
+  X -->|"完成后工具读回核验"| B
+  B --> C --> D --> E
+```
+
+以上是待实现的自动化分工；没有执行供应商登录、配置、发信或部署。依据：[cf](https://developers.cloudflare.com/cf/)、[cf 部署](https://developers.cloudflare.com/cf/projects/)、[WorkOS CLI](https://workos.com/docs/cli)、[WorkOS MCP](https://workos.com/docs/mcp)。
 
 ## 5. 连接发现与手机登录
 
-公开发现端点为 `GET /.well-known/open-cloud-groups`。这是应用协议，不是 WorkOS 标准端点。返回实例 ID、服务地址、协议兼容范围、公共 Client ID、认证服务信息和支持能力；不返回 API key、组织名单或用户数据。T1 中 discovery 仅与部署者独立核验后预先固定的配置比较，不作为实例可信归属的证据；不新增自动核验、签名登记或通用 OIDC 机制。
+公开发现端点为 `GET /.well-known/open-cloud-groups`。这是应用协议，不是 WorkOS 标准端点。返回实例 ID、服务地址、协议兼容范围、公共 Client ID、认证服务信息和支持能力；不返回 API key、组织名单或用户数据。T1 中 discovery 仅与部署者或获授权部署 Agent 从已认证控制面独立核验后预先固定的配置比较，不作为实例可信归属的证据；不新增陌生实例自动信任、签名登记或通用 OIDC 机制。
 
-手机输入/扫码只选择已核验配置中的 HTTPS 实例地址。仅点击确认域名不算独立核验。未知地址、Client ID/issuer/端点/回调不匹配时，在启动认证或发送 token 前拒绝；配置变化须由部署者重新核验，不自动接受。二维码不携带长期密钥、用户身份或资格。登录事务使用固定配置，回调参数不能更换实例。
+手机输入/扫码只选择已核验配置中的 HTTPS 实例地址。仅点击确认域名不算独立核验。未知地址、Client ID/issuer/端点/回调不匹配时，在启动认证或发送 token 前拒绝；配置变化须由部署者或其已授权部署 Agent 从控制面重新核验，不自动接受。二维码不携带长期密钥、用户身份或资格。登录事务使用固定配置，回调参数不能更换实例。
 
 ```mermaid
 sequenceDiagram
@@ -120,7 +159,7 @@ OAuth 专用回调固定为 `ai.botharness.deepseekbot:/oauth2redirect`，开发
 
 手机通过系统浏览器登录，密码只提交到 WorkOS 页面。PKCE 的作用是让拿到回调 code 的另一程序也不能仅凭 code 换取登录凭证。还须生成随机 state，并把实例 origin、Client ID、回调 URI、verifier、过期时间绑定为一次性事务；重复回调、切换实例后的旧回调都拒绝。自定义 scheme 不等于系统保证独占，不能省略这些校验。
 
-令牌只发送到独立核验并固定的实例及认证端点；不接受 discovery 自动指定的新目的地。state/PKCE 保护认证事务，不能证明资源服务器归属，也不能防止客户端主动把 bearer 发送到冒牌实例。T1 通过明确的人工核验前提缩小范围，不宣称支持任意陌生实例安全接入；额外代理/通用 OIDC 留后续。
+令牌只发送到独立核验并固定的实例及认证端点；不接受 discovery 自动指定的新目的地。state/PKCE 保护认证事务，不能证明资源服务器归属，也不能防止客户端主动把 bearer 发送到冒牌实例。T1 通过明确的已授权控制面核验前提缩小范围，不宣称支持任意陌生实例安全接入；额外代理/通用 OIDC 留后续。
 
 Native OAuth 必须在实际开发/发布构建验证，不能以 Expo Go 或网页预览替代。官方示例证明原生路线存在，不证明我们的 SDK 57、多实例缓存、冷启动回调已通过。SDK 与 Expo AuthSession/HTTP 的具体选择在 T1 开始后结合当前依赖验证；不为复刻示例随意引入 Node SDK/native crypto。
 
@@ -170,7 +209,9 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 
 附带验收条件：
 
-- 未核验地址、冒用其他实例 Client ID、核验后的配置漂移，在启动认证/token 发送前被拒绝；手机与 CLI 一致。部署者核验记录来自独立控制面，不来自被测实例自述。
+- 有可重复执行的 Agent CLI/MCP 部署路径，记录版本、目标账号/环境、完成步骤和必要人工项；已支持的配置不要求 Human 重复手工操作，重复执行不误建/误授权或覆盖无关配置。
+- 注册/OAuth/MFA、首个用户接受邀请/认证及工具未开放设置清楚标注；秘密由受保护输入交付，日志与 Agent 上下文不泄密。不支持的操作必须报告并在补齐后读回核验，不能误报全自动成功。
+- 未核验地址、冒用其他实例 Client ID、核验后的配置漂移，在启动认证/token 发送前被拒绝；手机与 CLI 一致。部署者或其已授权 Agent 的核验记录来自独立且已认证的控制面，不来自被测实例自述。
 - 未初始化实例、无 active 管理员资格的有效 WorkOS 用户、仅有组织 owner/member 资格的用户都不能进入业务或建组织；移除管理员资格后不能继续靠缓存进入。
 - owner 缺失、角色配置错误时 doctor 报告并阻止建组织；不能静默降级或扩大 member 权限。
 - 管理员创建自己的组织后持有 active owner membership；仍不能访问自己无 membership 的其他组织。
@@ -182,3 +223,7 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 已认可的设计方向：采用以上仓库边界；T1 仅 Worker + D1 + Org DO；手机 PKCE、CLI device flow；同一实例的一个 WorkOS application；首个管理员由部署者绑定明确 user_id。T1 仅已核验实例、active 初始化管理员准入与建组织；固定 owner/member 和独立 OAuth 回调。未新增机制，确认设计不等于启动实施。
 
 审查修订依据：[WorkOS roles](https://workos.com/docs/authkit/roles-and-permissions)、[RFC 8252 §7.1](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.1)、[RFC 9700 §4.9.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.9.1)。本次仅更新方案；实现、部署和真机验证尚未开始。
+
+## 10. 后续群管理边界
+
+Agent 可作为群主/管理员是已确认方向，放到 T1–T5 之后的群管理切片；审批加群随多人加入能力交付，验收目标见 [spec §8](spec.md#8-后续群管理切片agent-可作为群主)。部署 Agent 当前经 Human 授权操作供应商控制面，与未来群主 Agent 使用自身 TOB actor/凭证是不同授权。T1 不新增 Agent 群主权限、入群申请或通用权限编辑器，Human admin_only 与手机/CLI 登录合同保持不变。

@@ -53,7 +53,8 @@ Drizzle schemas and migrations belong to each storage owner. WorkOS, D1 and sepa
 ## Identity, privacy and self-deployment
 
 - Each deployment uses its own Cloudflare resources and WorkOS environment; a DSB official account is not required. WorkOS remains a hosted dependency.
-- T1 accepts only instance configurations independently verified by the deployer against their Cloudflare and WorkOS control planes. Mobile and CLI compare discovery against that fixed configuration; unknown or changed origins, Client IDs, authentication endpoints or callbacks are rejected before login or token transmission. Discovery and QR codes do not establish trust.
+- Deployment and initialization are agent-operated where official tooling supports them: prefer Cloudflare cf and WorkOS CLI/API or authorized MCP. Humans register accounts, select the target and authority, complete provider authentication, and handle only necessary unsupported steps or initial secret handoff. Exact coverage must be verified; WorkOS MCP does not expose or mint runtime API keys.
+- T1 accepts only instance configurations independently verified by the deployer or their authorized deployment agent against authenticated Cloudflare and WorkOS control planes. Mobile and CLI compare discovery against that fixed configuration; unknown or changed origins, Client IDs, authentication endpoints or callbacks are rejected before login or token transmission. Discovery and QR codes do not establish trust.
 - Mobile uses system-browser authentication with PKCE; CLI uses device authorization. OAuth has exact reverse-domain app callbacks, separate from existing navigation schemes. Clients never receive server API keys.
 - An operator explicitly initializes the first instance administrator. T1 admission and organization creation are both `admin_only`, with public WorkOS signup disabled. Valid authentication or organization membership alone does not admit a user; missing initialization or policy fails closed.
 - Deployment explicitly configures fixed `owner`/`member` roles with `member` as the default. Organization creation grants an explicit owner membership and is blocked if role configuration is missing or inconsistent. Instance administration does not grant access to other organizations or agent execution.
@@ -80,7 +81,7 @@ The first operation is a bounded, pre-authorized local health check, not arbitra
 
 Each slice includes its public contract, persistence, relevant client/CLI interaction and Human QA. T4 proves the happy path; T5 completes the first-path acceptance. No slice has started.
 
-The broader plan includes inbound webhooks and invitations for additional humans. Full OAuth administration, enterprise SSO, billing, attachments, federation and a shared filesystem are outside the first path. The official hosted offering may later add a private operations/billing layer that reuses this core.
+The broader plan includes inbound webhooks and invitations for additional humans. A later group-management slice will allow an agent's own identity to hold the group-owner or administrator role, operate within granted permissions, and approve/reject join requests when multi-user admission is delivered. Role grants remain revocable, with an authorized recovery path; channel authority never grants cloud-account administration, organization admission or local execution rights. T1–T5 do not implement these later permissions. Full OAuth administration, enterprise SSO, billing, attachments, federation and a shared filesystem are outside the first path. The official hosted offering may later add a private operations/billing layer that reuses this core.
 
 ## Planning and contribution
 
