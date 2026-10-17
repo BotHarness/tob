@@ -75,3 +75,13 @@ bash scripts/prepare-first-deploy.sh --help
 仅进行 Bash 语法与静态检查；技能模板 STAGES 之前保持逐字一致，四步均不调用 `open_url`。未运行交互全流程，未输入真实密钥，未验证云端授权或部署。机器当前未安装 shellcheck，未执行该检查。
 
 本向导是独立交付的人工准备工具。T1–T5 保持 ready-for-human；此脚本发布不授权自动部署、服务实现或任何云配置写入。
+
+## macOS Bash 提示文字回归检查
+
+已修复 Bash 3.2 在 Stage 3 将变量后紧邻的中文标点误作变量名的问题。运行以下检查会执行脚本真实的 Stage 3 提示段，使用临时公开标识和不存在的秘密文件路径，不启动完整向导、不读取 API key：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+该回归覆盖默认 locale / C locale 下的路径显示，并检查自定义步骤中变量与非 ASCII 标点的边界。它不代表完整交互流程或云端部署验证通过。若旧版在显示秘密文件路径时中断，普通退出会释放准备锁；直接用同一 profile 重跑即可，先前保存的目标值可按 Enter 保留。

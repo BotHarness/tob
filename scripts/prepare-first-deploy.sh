@@ -343,7 +343,7 @@ step '打开该环境的 API Keys 页面，取得环境的服务器 API key。'
 step '需要的是环境 API key；不是 Client ID，也不是某个 Organization 的应用 API key。'
 note '若页面名称或权限不同，请停下核对；不要切换环境或创建其他类型的 key 代替。'
 note '不要把 key 粘贴到聊天、截图或命令参数中。不会要求你手动创建 Webhook。'
-say "秘密仅保存到：$TOB_SECRET_FILE（0600，仓库外）"
+say "秘密仅保存到：${TOB_SECRET_FILE}（0600，仓库外）"
 ENV_FILE="$TOB_SECRET_FILE"
 TOB_HAS_KEY=$(_existing WORKOS_API_KEY >/dev/null && printf yes || true)
 if [[ "$TOB_HAS_KEY" == yes ]]; then
