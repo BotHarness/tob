@@ -23,13 +23,13 @@ bash scripts/prepare-first-deploy.sh --help
 | 步骤 | Human 操作 | 本机输出 |
 | --- | --- | --- |
 | 1. 账号准备 | 点击文本中的 Cloudflare / WorkOS URL，自行注册或登录 | 无；不收集登录凭证，也不宣称 CLI/MCP 已授权 |
-| 2. 确认目标 | 复制 Cloudflare Account ID，填写 WorkOS Team / Project 名称，确认 Staging | `deployment.env`：CLOUDFLARE_ACCOUNT_ID、两个 WorkOS 名称、固定 staging 和准备状态；归属/权限仍待 Agent 核验 |
+| 2. 确认目标 | 复制 Cloudflare Account ID 与 WorkOS Environment ID，确认选择了 Staging | `deployment.env`：CLOUDFLARE_ACCOUNT_ID、WORKOS_ENVIRONMENT_ID、期望类型 staging 和准备状态；归属/权限/环境类型仍待 Agent 核验 |
 | 3. 安全交付 API key | 在 WorkOS 目标环境的 API Keys 页面取得环境 key，在终端隐藏输入 | `secrets.env`：仅 `WORKOS_API_KEY`；不包含 Webhook secret |
 | 4. 交接 | 将两个文件路径交给同机部署 Agent | 输出后续步骤；不自动启动尚未实现的部署逻辑 |
 
 固定保存位置：`~/.config/tob/first-deploy/<profile>/`。目录权限 0700、文件 0600；脚本拒绝符号链接和 Git 仓库内存储。公开目标与秘密分文件保存，不创建或覆盖项目 `.env`，不将文件作为 shell 脚本 source。
 
-保存状态 `inputs_saved_unverified` 只表示本机输入完整。Account ID 格式和 WorkOS 名称不证明控制面归属，API key 格式检查不证明有效性；待后续工具核对明确的 account / environment / application ID。`secrets.env` 尚不完整，不直接用于部署。
+保存状态 `inputs_saved_unverified` 只表示本机输入完整。两项 ID 的格式不证明控制面归属或 WorkOS 环境类型，API key 格式检查不证明有效性；待后续工具核对明确的 account / environment / application ID。`secrets.env` 尚不完整，不直接用于部署。
 
 ## Cloudflare Account ID 从哪里找
 
@@ -42,6 +42,18 @@ bash scripts/prepare-first-deploy.sh --help
 旧版 profile 只有 CLOUDFLARE_ACCOUNT_HINT 时，会显示旧名称并要求确认仍为同一账号，再补充 ID；不自动把名称转换成 ID，也不修改已有秘密。已保存 ID 不允许换绑；改目标使用新 profile。
 
 依据：[Cloudflare 官方查找说明](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)。
+
+## WorkOS Environment ID 从哪里找
+
+1. 打开 https://dashboard.workos.com/，选择目标 Team / Project 和 **Staging**（本项目为 TOB → Staging）。
+2. 在环境控制台页面，从地址栏复制 `environment_` 开头的完整一段；URL 形如 `https://dashboard.workos.com/environment_…/...`。
+3. 只粘贴 Environment ID，不填整个 URL。若看不到该段，停下核对页面/环境，或由已授权部署 Agent 查询；不猜测或用别的 ID 代替。
+
+不再要求手工填写 Team / Project 名称或各自的 ID。`client_…` 是应用登录使用的 Client ID，`project_…` / `team_…` / `org_…` 也不能代替 Environment ID。本向导只做 `environment_` 加字母/数字的基本格式检查，保留大小写；ID 本身不证明 Staging/Production 类型或访问权限。后续 Agent 必须查询并展示所属 Team、Project、环境类型与 application/Client ID，再按 T1 核验，不能仅凭本机标记 staging 就访问生产环境。
+
+旧版记录的 Team / Project 名称仅保留作迁移参考：Human 明确确认仍为原 Staging 后补 ID，不改已有秘密；补齐后同 profile 不允许换 ID。新的 profile 不再要求这些名称。
+
+依据：[WorkOS CLI 指定 environment-id](https://workos.com/docs/cli)、[Environment API 类型](https://workos.com/docs/reference/platform/environment)。Dashboard 的环境 URL 结构见 [官方 deep-link 示例](https://workos.com/docs/authkit/impersonation#deep-linking-to-the-impersonation-flow)（仅引用 URL 结构，本向导不启用或执行 impersonation）。
 
 ## 中断重跑
 

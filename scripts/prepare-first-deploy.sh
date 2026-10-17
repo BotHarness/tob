@@ -230,9 +230,8 @@ ENV_FILE="$TOB_TARGET_FILE"
 # Never attach a saved secret to a new target after its target record was lost.
 if [[ -s "$TOB_SECRET_FILE" ]]; then
   [[ -n "$(_existing CLOUDFLARE_ACCOUNT_ID || true)" || -n "$(_existing CLOUDFLARE_ACCOUNT_HINT || true)" ]] || fail 'A secret file exists without a Cloudflare target record. Stop and reconcile the original target.'
-  for TOB_FIELD in WORKOS_TEAM_HINT WORKOS_PROJECT_HINT WORKOS_ENVIRONMENT; do
-    [[ -n "$(_existing "$TOB_FIELD" || true)" ]] || fail 'A secret file exists without a complete target record. Stop and reconcile the original target; do not reuse it for a new environment.'
-  done
+  [[ -n "$(_existing WORKOS_ENVIRONMENT_ID || true)" || ( -n "$(_existing WORKOS_TEAM_HINT || true)" && -n "$(_existing WORKOS_PROJECT_HINT || true)" ) ]] || fail 'A secret file exists without a WorkOS target record. Stop and reconcile the original target; do not reuse it for a new environment.'
+  [[ "$(_existing WORKOS_ENVIRONMENT || true)" == staging ]] || fail 'A secret file exists without the expected staging target. Stop and reconcile it first.'
 fi
 # Keep a caller's exported key from propagating to unrelated child processes.
 unset WORKOS_API_KEY
@@ -264,6 +263,9 @@ capture_target() {
     [[ "$value" =~ ^[0-9a-fA-F]{32}$ ]] || fail 'Account ID must be exactly 32 hexadecimal characters. Use Copy account ID; do not enter a name, email, Zone ID, API token, or the full URL. Nothing was saved for this field.'
     value=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')
   fi
+  if [[ "$field" == WORKOS_ENVIRONMENT_ID ]]; then
+    [[ "$value" =~ ^environment_[A-Za-z0-9]+$ ]] || fail 'Enter only the environment_... segment from the selected WorkOS dashboard URL. Do not enter a name, client/project/org ID, API key, or full URL. Nothing was saved for this field.'
+  fi
   if [[ -n "$saved" && "$saved" != "$value" ]]; then
     fail 'This profile already belongs to another target. Rerun with a new profile name; existing files are unchanged for this field.'
   fi
@@ -283,7 +285,7 @@ note 'CLI / MCP 的 OAuth 授权由部署 Agent 在后续需要时发起；网�
 confirm '账号已准备好，可以记录本次部署目标？' || exit 0
 
 stage '确认目标：只记录你的选择'
-say '步骤 2/4：复制 Cloudflare Account ID，再填写 WorkOS Team / Project 名称。'
+say '步骤 2/4：复制 Cloudflare Account ID 和 WorkOS Environment ID。'
 say "本机资料夹：$TOB_PRIVATE_DIR"
 note '当前只准备 Staging。重跑可按 Enter 保留；换账号或环境请使用新 profile。'
 show_url 'Cloudflare 控制台：https://dash.cloudflare.com/'
@@ -300,18 +302,32 @@ if [[ -n "$TOB_LEGACY_CF_HINT" && -z "$TOB_SAVED_CF_ID" ]]; then
   confirm '已在控制台选中旧记录对应的账号，继续复制它的 Account ID？' || exit 0
 fi
 capture_target CLOUDFLARE_ACCOUNT_ID 'Cloudflare Account ID（32 位）：'
-capture_target WORKOS_TEAM_HINT 'WorkOS Team 名称：'
-capture_target WORKOS_PROJECT_HINT 'WorkOS Project 名称（本项目通常为 TOB）：'
+show_url 'WorkOS 控制台：https://dashboard.workos.com/'
+step '登录后选择目标 Team / Project，再选择 Staging（本项目为 TOB → Staging）。'
+step '在该环境的控制台页面，从地址栏复制 environment_ 开头的完整一段。'
+note 'URL 形如 https://dashboard.workos.com/environment_…/...；只填 environment_…，不填整个 URL。'
+note '不要填 Team 名称、project_…、client_…、org_… 或 API key；Environment ID 本身不表示 Staging/Production。'
+note '若地址栏没有 environment_…，请停下核对环境，或让已授权部署 Agent 查询；不要猜 ID。'
+TOB_LEGACY_TEAM=$(_existing WORKOS_TEAM_HINT || true)
+TOB_LEGACY_PROJECT=$(_existing WORKOS_PROJECT_HINT || true)
+TOB_SAVED_WORKOS_ID=$(_existing WORKOS_ENVIRONMENT_ID || true)
+if [[ -z "$TOB_SAVED_WORKOS_ID" && ( -n "$TOB_LEGACY_TEAM" || -n "$TOB_LEGACY_PROJECT" ) ]]; then
+  say "旧版记录：Team=${TOB_LEGACY_TEAM:-未填写} / Project=${TOB_LEGACY_PROJECT:-未填写} / Staging"
+  note '仅为原目标补充 Environment ID；旧名称与秘密保留，不借此切换项目/环境。'
+  confirm '已选中旧记录对应的 Staging 环境，继续复制它的 Environment ID？' || exit 0
+fi
+capture_target WORKOS_ENVIRONMENT_ID 'WorkOS Environment ID（environment_…）：'
 ENV_FILE="$TOB_TARGET_FILE"
 TOB_SAVED_ENV=$(_existing WORKOS_ENVIRONMENT || true)
 [[ -z "$TOB_SAVED_ENV" || "$TOB_SAVED_ENV" == staging ]] || fail 'This profile is not a staging profile; use a new profile name.'
 persist WORKOS_ENVIRONMENT staging
 persist PREPARATION_STATUS incomplete
-note 'ID 与名称仍是待核验的部署目标；格式检查不能区分 Account ID 与 Zone ID，也不证明归属或权限。'
+note '两项 ID 仍待控制面核验；格式检查不证明账号归属、权限或 WorkOS 环境类型。'
 confirm '上述目标就是本次要使用的账号、项目和 Staging 环境？' || exit 0
 
 stage 'WorkOS API key：只在此终端隐藏输入'
-say '步骤 3/4：在自己的 WorkOS Dashboard 选择刚才的 Team / Project / Staging。'
+say '步骤 3/4：在 WorkOS Dashboard 保持刚才的 Staging 环境，核对 URL 中的 Environment ID。'
+say "本次记录的 Environment ID：$(_existing WORKOS_ENVIRONMENT_ID)"
 show_url 'WorkOS Dashboard：https://dashboard.workos.com/'
 show_url '官方 API key 说明：https://workos.com/docs/reference/api-authentication'
 step '打开该环境的 API Keys 页面，取得环境的服务器 API key。'

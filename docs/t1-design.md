@@ -87,7 +87,7 @@ WorkOS OAuth 设置不假定能靠我们的环境变量自动创建：Google 后
 入口：`bash scripts/prepare-first-deploy.sh tob-staging`；[脚本](../scripts/prepare-first-deploy.sh)、[使用说明](first-deploy-preparation.md)。这是一份可运行的本机准备工具，不是安装器，也不标志 T1 部署或登录路径完成。
 
 1. 展示 Cloudflare / WorkOS 注册、登录及 API key 说明 URL；仅打印文本，不打开浏览器，不收集账号密码或 OAuth token。
-2. Human 从 Cloudflare 控制台复制 Account ID（提供 Cmd/Ctrl+K → Copy account ID、Workers & Pages 路径与 URL 示例），填写 WorkOS Team / Project 名称，固定 Staging；写入本机 deployment.env。Cloudflare ID 校验为 32 位十六进制并统一为小写，但格式不证明账号归属、权限或排除 Zone ID，仍由后续 Agent 从已授权控制面核验。旧版账号名称保留，明确确认同一账号后补 ID；已保存 ID 不允许换绑，不修改已有秘密。
+2. Human 复制 Cloudflare Account ID（提供控制台查找路径与 URL 示例）和 WorkOS Environment ID（在目标项目 Staging 的 Dashboard URL 中复制 environment_… 段），不再填写 Team / Project 名称；写入本机 deployment.env。Cloudflare ID 校验为 32 位十六进制并统一小写，WorkOS ID 做 environment_ 前缀及字母数字基本检查并保留大小写。格式不能证明归属、权限或 WorkOS 环境类型；后续 Agent 查询展示 Team / Project / Staging 类型及 application/Client ID 后核验。旧名称仅保留作参考，明确确认原目标后补 ID；已保存 ID 不允许换绑，不修改已有秘密。
 3. Human 在目标环境取得服务器 API key，通过终端隐藏输入保存到仓库外 secrets.env；只包含 WORKOS_API_KEY，不含 Webhook secret。两份文件位于 ~/.config/tob/first-deploy/<profile>/，目录 0700、文件 0600，不进入公共连接配置或二维码。
 4. 输出同机部署 Agent 的交接路径与待办；状态为 inputs_saved_unverified。向导不进行网络请求、工具 OAuth、发邀请、创建 Webhook、注入 Worker Secrets、迁移或部署；不会调用尚未实现的自动部署命令。
 
@@ -332,6 +332,7 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 
 附带验收条件（全部仍待完整运行验证；管理端证据及准备脚本静态检查不代表交付完成）：
 
+- 验证 WorkOS Environment ID 输入：可从环境 Dashboard URL 找到 environment_…；名称、其他 ID 前缀与完整 URL 均拒绝，不改写有效 ID 大小写；同 profile 换 ID 拒绝。旧 Team / Project 名称经明确确认原 Staging 后补 ID；格式及本机 staging 标记不替代环境类型/归属/权限核验。
 - 验证 Cloudflare Account ID 输入：查找路径与 URL 示例清楚，非法格式和完整 URL 不写入目标字段；有效 ID 规范为小写，已保存 ID 不可改绑；旧名称 profile 需明确确认同一账号后补 ID并保留秘密。格式检查不作为控制面核验成功。
 - 人工准备向导在交互终端完成四步，URL 只打印且不会自动开浏览器或执行网络/云动作；输入不包含供应商账号密码、OAuth token 或 Cloudflare 部署凭证。
 - 目标选择和 API key 分开保存在仓库外受限文件；密钥隐藏输入、不回显或进入日志/参数/公共配置；同 profile 中断重跑可复用，换目标拒绝复用旧 key，目标记录缺失时停止。真实交互与文件权限检查仍待完成。
