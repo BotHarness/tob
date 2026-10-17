@@ -14,7 +14,7 @@
 
 ## 2. 新仓库组织
 
-项目名 TOB — Thousands of Bots，仓库 `BotHarness/tob`。CLI 拟名 `tob`；npm scope 和许可证尚未正式确定。以下是建议目录，不代表已存在或开始创建。
+项目名 TOB — Thousands of Bots，仓库 `BotHarness/tob`。CLI 拟名 `tob`；npm scope 和许可证尚未正式确定。以下是目标目录；目前仅 docs、README 与人工准备脚本 scripts/prepare-first-deploy.sh 已交付，其余目录不代表已存在或开始创建。
 
 ```text
 tob/
@@ -28,7 +28,8 @@ tob/
   packages/
     contracts/           请求、响应、错误码、公开发现文档与协议版本
     client/              平台无关客户端；会话/安全存储通过平台适配
-  tools/deployment/      部署、诊断、受保护的超级管理员初始化/恢复
+  scripts/prepare-first-deploy.sh  已交付：仅本机人工准备
+  tools/deployment/      规划：部署、诊断、受保护的超级管理员初始化/恢复
   tests/                 公开合同和真实 Worker/D1/DO 集成测试
   docs/                  部署说明、协议、架构、ADR、验收操作
 ```
@@ -80,6 +81,19 @@ WorkOS OAuth 设置不假定能靠我们的环境变量自动创建：Google 后
 ## 4. Agent 优先的自部署与初始化
 
 “部署者负责”表示由部署者选择账号、授权范围并承担实例归属，不表示必须由人逐项操作控制台。Human 完成必要注册/身份验证与 OAuth 后，Agent 通过官方 CLI/API 或已授权 MCP 代办范围内的动作，无需逐项重复确认；这不是授予后续群主 Bot 云账号权限。
+
+### 已交付的首次部署人工准备向导
+
+入口：`bash scripts/prepare-first-deploy.sh tob-staging`；[脚本](../scripts/prepare-first-deploy.sh)、[使用说明](first-deploy-preparation.md)。这是一份可运行的本机准备工具，不是安装器，也不标志 T1 部署或登录路径完成。
+
+1. 展示 Cloudflare / WorkOS 注册、登录及 API key 说明 URL；仅打印文本，不打开浏览器，不收集账号密码或 OAuth token。
+2. Human 选择 Cloudflare 账号和 WorkOS Team / Project 名称，固定 Staging；写入本机 deployment.env。名称是部署意图，不是控制面已核验 ID；实际 ID 由后续 Agent 查询。
+3. Human 在目标环境取得服务器 API key，通过终端隐藏输入保存到仓库外 secrets.env；只包含 WORKOS_API_KEY，不含 Webhook secret。两份文件位于 ~/.config/tob/first-deploy/<profile>/，目录 0700、文件 0600，不进入公共连接配置或二维码。
+4. 输出同机部署 Agent 的交接路径与待办；状态为 inputs_saved_unverified。向导不进行网络请求、工具 OAuth、发邀请、创建 Webhook、注入 Worker Secrets、迁移或部署；不会调用尚未实现的自动部署命令。
+
+中断后同 profile 重跑复用已有值，不替换/轮换 key；已保存目标字段不可改绑，换目标用新 profile。秘密存在而目标记录不完整则停止。脚本拒绝符号链接、Git 仓库内秘密存储及非交互输入，避免两个同 profile 进程同时写入；意外强制终止遗留锁需先确认旧进程已退出再处理。
+
+本次发布证据限于 Bash 语法、--help、非交互拒绝及静态检查（模板库不变、四步、不调用开网页/云写入）。未运行完整交互或真实 key 流程；shellcheck 当前未安装。后续需分别验证隐藏输入/文件权限/中断重跑、工具授权与实际目标、API key 可用性、Webhook 签名秘密交接、Worker 注入及真实部署。向导结束不关闭“秘密与 Cloudflare 交接”缺口，不释放 T2。
 
 ### 人与 Agent 的分工
 
@@ -176,7 +190,7 @@ flowchart TB
 1. **配置执行与重跑。** 锁定正确项目/环境/application；关闭 signup，明确创建 owner，保持 member 默认和单角色；登记精确回调并确定退出返回地址。写后读回、重复执行不重复创建且不覆盖无关配置；未知角色不获得权限，已有内置 admin 无需删除。注册/角色/回调已有自动化接口，不再默认归为人工步骤。
 2. **首个应用用户到管理员（方案已确认，运行验收待完成）。** 关闭注册并读回后发送无组织邀请；本人接受后按 invitation_id 读取 accepted_user_id，再核验同一环境实际用户的目标邮箱、email_verified 与可用状态。部署者 Cloudflare 管理权限下，以同一 D1 原子操作绑定 active instance_admin 和固定首次初始化回执。重试先读权威状态；不重复发信、不覆盖其他用户、不恢复已撤销管理员。邀请返回与正常手机/CLI 登录分开；详见 T1 §4。邀请接受、真实用户核验、原子写入与中断/并发恢复尚未运行验证。
 3. **可信配置导入（方案已确认，运行验收待完成）。** 部署 Agent 从两个已认证控制面核验后，输出 tob-instance.json 及承载同一配置全文的本地二维码；手机从可信部署电脑扫码，CLI 读取文件，共用校验和 discovery 比对。关键配置变化后停止联网操作，重新核验、导出、导入并登录；具体流程见 T1 §5–6。设计确认不等于导入、扫码或重新核验已实现，不以预置配置替代验收。
-4. **秘密与 Cloudflare 交接。** 受保护取得运行 API key/Webhook secret 并注入 Worker Secrets；记录资源 ID，区分 D1 SQL、DO namespace 生命周期和每个 Org DO 的迁移；配置事件端点 / Cron 并处理中断重跑。初始化前业务关闭，未确认资源不得盲目重建。此次未验证此路径，MCP key metadata 不等于已取得运行秘密。
+4. **秘密与 Cloudflare 交接（人工准备脚本已交付，运行交接待完成）。** 向导仅采集本机 API key 与目标意图，不核验 key 或注入 Worker。后续受保护取得运行 API key/Webhook secret 并注入 Worker Secrets；记录资源 ID，区分 D1 SQL、DO namespace 生命周期和每个 Org DO 的迁移；配置事件端点 / Cron 并处理中断重跑。初始化前业务关闭，未确认资源不得盲目重建。此次未验证此路径，MCP key metadata 不等于已取得运行秘密。
 5. **完整运行验收。** 手机登录并建组织 → CLI 独立登录看到同一组织 → 刷新、组织切换、退出与撤权；真实事件签名、补漏/重试、WorkOS/D1/Org DO 中途失败恢复和 Human QA 均须有证据。管理端读取、dry-run、fixture 都不能替代。
 
 五项保留在 T1 内，不另拆横向基础票，不提前启动 T2–T5。必要人工仍是注册、目标/授权选择、OAuth/MFA、首次应用用户认证、产品登录确认和 Human QA；初始秘密交付自动化未证实、团队限制或生产 billing 才属于条件人工。全部实现验收仍未完成。
@@ -316,7 +330,11 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 
 一次现场验收应能完成：新环境部署并初始化 → 无 Host 手机选择已核验实例 → 系统浏览器登录回 App → 创建组织 → CLI 独立登录看到同一组织 → 两边刷新/重启 → 切换第二个测试组织 → 退出一端不退出另一端 → 删除成员/撤销会话后请求被拒绝。
 
-附带验收条件（全部仍待完整实现验证；上述管理端证据不代表交付完成）：
+附带验收条件（全部仍待完整运行验证；管理端证据及准备脚本静态检查不代表交付完成）：
+
+- 人工准备向导在交互终端完成四步，URL 只打印且不会自动开浏览器或执行网络/云动作；输入不包含供应商账号密码、OAuth token 或 Cloudflare 部署凭证。
+- 目标选择和 API key 分开保存在仓库外受限文件；密钥隐藏输入、不回显或进入日志/参数/公共配置；同 profile 中断重跑可复用，换目标拒绝复用旧 key，目标记录缺失时停止。真实交互与文件权限检查仍待完成。
+- 向导保存 inputs_saved_unverified 状态，并在末尾明确提示尚未核验或部署；没有 Webhook secret，不执行部署。独立报告“本机准备工具已交付”与“授权/凭证/部署尚未验证”，不得把向导退出码或 README 示例当作 T1 完成。
 
 - 分别列出读取、dry-run、持久化写后读回与完整运行证据，关闭上述五项缺口；未来写入均先锁定正确环境，保持无关配置并验证重跑。
 - 从零应用用户开始，关闭注册后经无组织邀请建立实际身份；读取 accepted_user_id 并核验用户。错邮箱、未验证邮箱、禁用/封禁、错误环境或无法确认状态均不得授予管理员；已有目标用户可核验复用，无需重复邀请。

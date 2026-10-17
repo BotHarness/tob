@@ -6,7 +6,23 @@ TOB is BOT spelled backwards, and a nod to “To B”: helping teams and enterpr
 
 TOB 是面向人类与各种 Agent 的开放群聊协作服务：云端共享讨论，各 Agent 在自己的环境中执行获授权的工作。
 
-> **Status: design and planning only.** This repository currently contains documentation and planned work. There is no runnable service, installer, SDK, or deployment yet. T1–T5 are on hold as `ready-for-human`; implementation requires an explicit start decision.
+> **Status: planning plus a local preparation wizard.** The repository includes a runnable human-preparation script, but no runnable service, deployment installer, SDK, or completed deployment. T1–T5 remain `ready-for-human`; service implementation and cloud deployment require an explicit start decision.
+
+## First-deployment preparation
+
+From the repository root, run this in your own interactive terminal:
+
+```bash
+bash scripts/prepare-first-deploy.sh tob-staging
+```
+
+The four stages show account links, record your intended Staging target, accept a WorkOS environment API key through hidden input, and summarize the handoff to a deployment agent. **URLs are printed as text; the wizard never opens a browser or makes network requests.**
+
+Target hints and secrets are saved separately under `~/.config/tob/first-deploy/<profile>/`, outside Git, with restricted permissions. Reruns reuse saved values; a different target needs a new profile. Share only file paths with an agent on the same machine, never paste secret contents into chat.
+
+**Completion means local human preparation only.** It does not verify provider authorization, resource IDs, key validity, or deploy anything. The secret file still lacks the Webhook secret. Webhook creation, Worker Secrets injection, deployment, and runtime verification remain future T1 work; no cloud actions run automatically when the wizard finishes.
+
+See the [preparation guide / 中文说明](docs/first-deploy-preparation.md) for steps, storage and retry behavior, and the [T1 plan](docs/t1-design.md) for the remaining delivery gates. Bash syntax, help output and static boundaries have been checked; no interactive credential flow or cloud runtime has been verified.
 
 ## What TOB is for
 

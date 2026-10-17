@@ -4,6 +4,8 @@ Canonical delivery specification: https://github.com/BotHarness/tob/issues/1
 
 状态：Human 已确认 WorkOS 路线、测试边界、T1–T5 拆分及 Open Cloud Groups 专项 Project；批准发布，暂不启动实现。已授权公开规划、WorkOS TOB staging 项目准备及真实 MCP 核验；本次仅同步证据与验收，不启动正式实现、后续配置写入、部署或收费。日期：2026-10-17。
 
+已单独授权交付 [首次部署人工准备向导](https://github.com/BotHarness/tob/blob/main/scripts/prepare-first-deploy.sh) 与 [说明](https://github.com/BotHarness/tob/blob/main/docs/first-deploy-preparation.md)：仅本机步骤引导、目标记录与隐藏输入 API key。准备完成不代表控制面授权、凭证核验、Worker Secrets 注入或部署完成；服务及其余 T1–T5 未启动。
+
 ## Problem Statement
 
 一个 Human 的 Agent 分布在不同电脑和运行时中，缺少同一个手机群聊入口来协作。依赖某台 Host 在线或外部聊天镜像，会限制独立 Agent 接入与自部署。用户需要开放的群服务，手机可直接管理并参与群聊，工作仍在各 Agent 的环境内按主人授权执行。
@@ -210,7 +212,7 @@ flowchart TB
 1. **配置执行与重跑。** 锁定正确项目/环境/application；关闭 signup，明确创建 owner，保持 member 默认和单角色；登记精确回调并确定退出返回地址。写后读回、重复执行不重复创建且不覆盖无关配置；未知角色不获得权限，已有内置 admin 无需删除。注册/角色/回调已有自动化接口，不再默认归为人工步骤。
 2. **首个应用用户到管理员（方案已确认，运行验收待完成）。** 关闭注册并读回后发送无组织邀请；本人接受后按 invitation_id 读取 accepted_user_id，再核验同一环境实际用户的目标邮箱、email_verified 与可用状态。部署者 Cloudflare 管理权限下，以同一 D1 原子操作绑定 active instance_admin 和固定首次初始化回执。重试先读权威状态；不重复发信、不覆盖其他用户、不恢复已撤销管理员。邀请返回与正常手机/CLI 登录分开；详见 T1 §4。邀请接受、真实用户核验、原子写入与中断/并发恢复尚未运行验证。
 3. **可信配置导入（方案已确认，运行验收待完成）。** 部署 Agent 从两个已认证控制面核验后，输出 tob-instance.json 及承载同一配置全文的本地二维码；手机从可信部署电脑扫码，CLI 读取文件，共用校验和 discovery 比对。关键配置变化后停止联网操作，重新核验、导出、导入并登录；具体流程见 T1 §5–6。设计确认不等于导入、扫码或重新核验已实现，不以预置配置替代验收。
-4. **秘密与 Cloudflare 交接。** 受保护取得运行 API key/Webhook secret 并注入 Worker Secrets；记录资源 ID，区分 D1 SQL、DO namespace 生命周期和每个 Org DO 的迁移；配置事件端点 / Cron 并处理中断重跑。初始化前业务关闭，未确认资源不得盲目重建。此次未验证此路径，MCP key metadata 不等于已取得运行秘密。
+4. **秘密与 Cloudflare 交接（人工准备脚本已交付，运行交接待完成）。** 向导仅采集本机 API key 与目标意图，不核验 key 或注入 Worker。后续受保护取得运行 API key/Webhook secret 并注入 Worker Secrets；记录资源 ID，区分 D1 SQL、DO namespace 生命周期和每个 Org DO 的迁移；配置事件端点 / Cron 并处理中断重跑。初始化前业务关闭，未确认资源不得盲目重建。此次未验证此路径，MCP key metadata 不等于已取得运行秘密。
 5. **完整运行验收。** 手机登录并建组织 → CLI 独立登录看到同一组织 → 刷新、组织切换、退出与撤权；真实事件签名、补漏/重试、WorkOS/D1/Org DO 中途失败恢复和 Human QA 均须有证据。管理端读取、dry-run、fixture 都不能替代。
 
 五项保留在 T1 内，不另拆横向基础票，不提前启动 T2–T5。必要人工仍是注册、目标/授权选择、OAuth/MFA、首次应用用户认证、产品登录确认和 Human QA；初始秘密交付自动化未证实、团队限制或生产 billing 才属于条件人工。全部实现验收仍未完成。
@@ -223,6 +225,7 @@ flowchart TB
 - Host 复用既有 Messaging 入站、身份、Outbox/撤权测试与 CLI 同命令先例，不为云适配重写第二套 Messaging。新增用例只覆盖云 actor、来源传递、持久发送和恢复行为。
 - 手机沿用现有群管理网络调用及错误状态测试，另做真实手机无 Host 登录、建群、凭证管理、完整协作和回前台恢复。Node/Web 测试不代替原生回调与安全存储验证。
 - T1 必须分开报告读取成功、dry-run 成功、持久化写入并读回、完整运行验收四类证据；前两类已验证的部分不勾选成 T1 交付完成，剩余五项缺口全部关闭后才可验收。
+- T1 人工准备向导须验证 URL 只打印、不发网络请求、目标与秘密分文件且仓库外受限保存、隐藏输入、中断重跑与换目标拒绝；最终状态必须明确 inputs_saved_unverified。当前仅脚本与静态检查已交付，真实交互及云运行仍待验证。
 - T1 部署验收以 Agent 可重复执行的 CLI/MCP 路径为主，列出 Human 必做与工具不支持的人工项；核验账号/环境、秘密不泄漏、重复运行不误建/误授予及配置读回。由 Agent 从已认证控制面核验的实例同样符合可信前提；仅目标 discovery 自述仍不符合。
 - T1 首次管理员验收：关闭注册后的无组织邀请、accepted_user_id 与真实用户匹配、D1 固定首次回执与管理员原子写入、发送/写入响应丢失、并发不同目标、撤销后重跑均需验证；不能误发邀请、错绑、覆盖或重新授予已撤权限。邀请接受不完成手机登录，绑定后无组织管理员正常登录建组织。
 - T1 配置导入必测：全新手机扫码和 CLI 文件导入、相同配置重复导入、无凭证 discovery 比对、错误/不兼容配置拒绝、关键配置漂移阻断、重新核验导入后重新登录；名称变更和公开配置不变的升级不要求重登，实例 ID 变更另建实例。失败导入不覆盖原配置，旧凭证/缓存/待发送内容不迁移到新目标；不以预置配置跳过首次导入。
