@@ -1,10 +1,10 @@
 # T1 展开：仓库、自部署、手机与 CLI 登录
 
-状态：T1 的部署与 WorkOS 登录/首个管理员初始化增量已在真实 UAT 验证。健康/版本、D1 与 Org DO 迁移、JWT 校验、受保护的原子初始化和 `/api/me` 已实现；组织/群命令仍关闭。手机、产品 CLI 会话及组织路径仍待完成，T1 保持开放，T2–T5 与 Prod 未启动。
+状态：T1 的部署与 WorkOS 登录/首个管理员初始化增量已在真实 UAT 验证。健康/版本、D1 与 Org DO 迁移、JWT 校验、受保护的原子初始化和 `/api/me` 已实现；组织/群命令仍关闭。可信配置文件导入及正式 CLI 登录、刷新、退出也已通过真实 UAT 验证；手机及组织路径仍待完成，T1 保持开放，T2–T5 与 Prod 未启动。
 
-2026-10-18 UAT 证据：有效身份初始化前拒绝 → 已接受邀请的实际用户原子绑定 → 同一身份 `/api/me` 成功；同目标重试不改写授权。准确部署 SHA、测试范围、首次失败与剩余门槛见 [登录与初始化切片](t1-auth-bootstrap.md#evidence-and-remaining-boundaries)。手机与产品 CLI 随后接入，Prod 不变。
+2026-10-18 UAT 证据：有效身份初始化前拒绝 → 已接受邀请的实际用户原子绑定 → 同一身份 `/api/me` 成功；同目标重试不改写授权。准确部署 SHA、测试范围、首次失败与剩余门槛见 [登录与初始化切片](t1-auth-bootstrap.md#evidence-and-remaining-boundaries)。本条记录属于较早的初始化增量；CLI 后续结果见下文，Prod 不变。
 
-2026-10-18 追加切片：已授权仅 UAT 的可信配置文件导入与正式 CLI 登录/刷新/退出；[本切片合同与验收](t1-cli-session.md)。手机/二维码和组织仍后续接入，本轮不触碰 Prod。
+2026-10-18 CLI 增量已验证：部署者核验/导出 → 文件导入 → Human 设备授权 → 身份读取 → 令牌轮换 → 仅撤销当前会话 → 本机退出；WorkOS 独立读回与撤销后刷新拒绝通过。首次 Worker 退出失败已复现并修复，准确 SHA、CI、运行证据及限制见 [CLI 合同与验收](t1-cli-session.md#live-uat-evidence--2026-10-18-jst)。手机/二维码、组织、身份事件与完整 Human QA 仍待交付；Prod 不变。
 
 关联：[Spec #1](https://github.com/BotHarness/tob/issues/1)、[T1 #2](https://github.com/BotHarness/tob/issues/2)。本次仅收敛 T1，不扩大 T2–T5。
 
