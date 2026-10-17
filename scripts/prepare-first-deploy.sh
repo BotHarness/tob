@@ -249,13 +249,22 @@ trap 'exit 143' TERM
 
 # Inputs are data, never shell-sourced. No credential values appear in args
 # to external commands. TMPDIR keeps the template's mktemp/mv on one volume.
-persist() { TMPDIR="$TOB_PRIVATE_DIR" write_env "$1" "$2"; }
+persist() {
+  if [[ -f "$ENV_FILE" && "$(_existing "$1" || true)" == "$2" ]]; then
+    note "已保存：$1（保留，不重复写入）"
+    return 0
+  fi
+  TMPDIR="$TOB_PRIVATE_DIR" write_env "$1" "$2"
+}
 
 capture_target() {
   local field="$1" prompt="$2" saved="" value=""
   ENV_FILE="$TOB_TARGET_FILE"
   saved=$(_existing "$field" || true)
-  if [[ -n "$saved" ]]; then say "已保存：$field = $saved"; fi
+  if [[ -n "$saved" ]]; then
+    say "已保存：$field = $saved"
+    prompt="${prompt}（按 Enter 保留并继续）"
+  fi
   ask "$field" "$prompt"
   value="${!field}"
   [[ -n "$value" && ${#value} -le 160 && ! "$value" =~ [[:cntrl:]] ]] || fail 'Target name is required (up to 160 characters, no control characters).'
@@ -338,9 +347,9 @@ say "秘密仅保存到：$TOB_SECRET_FILE（0600，仓库外）"
 ENV_FILE="$TOB_SECRET_FILE"
 TOB_HAS_KEY=$(_existing WORKOS_API_KEY >/dev/null && printf yes || true)
 if [[ "$TOB_HAS_KEY" == yes ]]; then
-  note '此 profile 已保存 API key。默认复用；本向导不替换或轮换已有凭证。'
-  confirm '保留已有 API key，继续准备？' || exit 0
-  WORKOS_API_KEY=$(_existing WORKOS_API_KEY)
+  note '已保存 WORKOS_API_KEY（内容隐藏）；按 Enter 复用并继续，无需输入 y 或重新粘贴。'
+  ask_secret WORKOS_API_KEY '按 Enter 保留已有 API key，Ctrl-C 退出：'
+  [[ "$WORKOS_API_KEY" == "$(_existing WORKOS_API_KEY)" ]] || fail 'An API key is already saved. This wizard does not replace it; rerun and press Enter to keep it. The saved key was not changed.'
 else
   ask_secret WORKOS_API_KEY '粘贴该环境 API key（输入不可见）：'
 fi

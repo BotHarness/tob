@@ -20,7 +20,7 @@ The four stages show account links, record the Cloudflare Account ID and WorkOS 
 
 The wizard explains how to copy the Account ID using **Cmd/Ctrl+K → Copy account ID** in the Cloudflare dashboard, with a URL example. For WorkOS, select the intended project’s **Staging** environment and copy the `environment_…` segment from the dashboard URL. Team/project names are no longer required. ID format alone does not verify ownership, access, or whether the WorkOS environment is Staging; the deployment agent must still check those facts.
 
-Target IDs (and any retained legacy name hints) are saved separately from secrets under `~/.config/tob/first-deploy/<profile>/`, outside Git, with restricted permissions. Reruns reuse saved values; a different target needs a new profile. Share only file paths with an agent on the same machine, never paste secret contents into chat.
+Target IDs (and any retained legacy name hints) are saved separately from secrets under `~/.config/tob/first-deploy/<profile>/`, outside Git, with restricted permissions. On reruns, press Enter to keep each saved value. The API key is marked as saved without displaying it; Enter reuses it without a separate y/N prompt. Unchanged values are not rewritten; a different target needs a new profile. Share only file paths with an agent on the same machine, never paste secret contents into chat.
 
 **Completion means local human preparation only.** It does not verify provider authorization, resource IDs, key validity, or deploy anything. The secret file still lacks the Webhook secret. Webhook creation, Worker Secrets injection, deployment, and runtime verification remain future T1 work; no cloud actions run automatically when the wizard finishes.
 

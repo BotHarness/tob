@@ -91,7 +91,7 @@ WorkOS OAuth 设置不假定能靠我们的环境变量自动创建：Google 后
 3. Human 在目标环境取得服务器 API key，通过终端隐藏输入保存到仓库外 secrets.env；只包含 WORKOS_API_KEY，不含 Webhook secret。两份文件位于 ~/.config/tob/first-deploy/<profile>/，目录 0700、文件 0600，不进入公共连接配置或二维码。
 4. 输出同机部署 Agent 的交接路径与待办；状态为 inputs_saved_unverified。向导不进行网络请求、工具 OAuth、发邀请、创建 Webhook、注入 Worker Secrets、迁移或部署；不会调用尚未实现的自动部署命令。
 
-中断后同 profile 重跑复用已有值，不替换/轮换 key；已保存目标字段不可改绑，换目标用新 profile。秘密存在而目标记录不完整则停止。脚本拒绝符号链接、Git 仓库内秘密存储及非交互输入，避免两个同 profile 进程同时写入；意外强制终止遗留锁需先确认旧进程已退出再处理。
+中断后同 profile 重跑：普通字段显示已保存值，Enter 保留并继续；API key 只提示已保存，Enter 复用，无需 y 或再次粘贴，不同 key 输入被拒绝。相同值不重复写入，不替换/轮换 key；已保存目标字段不可改绑，换目标用新 profile。秘密存在而目标记录不完整则停止。脚本拒绝符号链接、Git 仓库内秘密存储及非交互输入，避免两个同 profile 进程同时写入；意外强制终止遗留锁需先确认旧进程已退出再处理。
 
 本次发布证据限于 Bash 语法、--help、非交互拒绝及静态检查（模板库不变、四步、不调用开网页/云写入）。未运行完整交互或真实 key 流程；shellcheck 当前未安装。后续需分别验证隐藏输入/文件权限/中断重跑、工具授权与实际目标、API key 可用性、Webhook 签名秘密交接、Worker 注入及真实部署。向导结束不关闭“秘密与 Cloudflare 交接”缺口，不释放 T2。
 
@@ -332,6 +332,7 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 
 附带验收条件（全部仍待完整运行验证；管理端证据及准备脚本静态检查不代表交付完成）：
 
+- 验证重跑默认值：普通字段显示已有值并支持 Enter；API key 内容隐藏，Enter 直接复用，不出现额外 y/N 提示；相同值不重复写文件，输入不同 key 不覆盖旧秘密。账号/目标选择的确认不被跳过。
 - 验证 WorkOS Environment ID 输入：可从环境 Dashboard URL 找到 environment_…；名称、其他 ID 前缀与完整 URL 均拒绝，不改写有效 ID 大小写；同 profile 换 ID 拒绝。旧 Team / Project 名称经明确确认原 Staging 后补 ID；格式及本机 staging 标记不替代环境类型/归属/权限核验。
 - 验证 Cloudflare Account ID 输入：查找路径与 URL 示例清楚，非法格式和完整 URL 不写入目标字段；有效 ID 规范为小写，已保存 ID 不可改绑；旧名称 profile 需明确确认同一账号后补 ID并保留秘密。格式检查不作为控制面核验成功。
 - 人工准备向导在交互终端完成四步，URL 只打印且不会自动开浏览器或执行网络/云动作；输入不包含供应商账号密码、OAuth token 或 Cloudflare 部署凭证。
