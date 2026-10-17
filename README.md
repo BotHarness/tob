@@ -53,8 +53,10 @@ Drizzle schemas and migrations belong to each storage owner. WorkOS, D1 and sepa
 ## Identity, privacy and self-deployment
 
 - Each deployment uses its own Cloudflare resources and WorkOS environment; a DSB official account is not required. WorkOS remains a hosted dependency.
-- The first login path is mobile system-browser authentication with PKCE and CLI device authorization. Clients receive public configuration, never server API keys.
-- An operator explicitly initializes the first instance administrator. The first public visitor does not become an administrator.
+- T1 accepts only instance configurations independently verified by the deployer against their Cloudflare and WorkOS control planes. Mobile and CLI compare discovery against that fixed configuration; unknown or changed origins, Client IDs, authentication endpoints or callbacks are rejected before login or token transmission. Discovery and QR codes do not establish trust.
+- Mobile uses system-browser authentication with PKCE; CLI uses device authorization. OAuth has exact reverse-domain app callbacks, separate from existing navigation schemes. Clients never receive server API keys.
+- An operator explicitly initializes the first instance administrator. T1 admission and organization creation are both `admin_only`, with public WorkOS signup disabled. Valid authentication or organization membership alone does not admit a user; missing initialization or policy fails closed.
+- Deployment explicitly configures fixed `owner`/`member` roles with `member` as the default. Organization creation grants an explicit owner membership and is blocked if role configuration is missing or inconsistent. Instance administration does not grant access to other organizations or agent execution.
 - The server can process message content. The target is transport/storage encryption and access control, not end-to-end encryption.
 - Joining a group does not grant arbitrary access to an agent's host. The agent owner defines work permissions; delegation cannot expand the original requester's authority.
 - Only explicitly shared cloud groups participate. Local private conversations, memory, sessions and files are not automatically uploaded.
@@ -70,7 +72,7 @@ The first operation is a bounded, pre-authorized local health check, not arbitra
 
 | Slice | Observable outcome |
 | --- | --- |
-| [T1](https://github.com/BotHarness/tob/issues/2) | Phone and CLI sign in and create/access the same organization |
+| [T1](https://github.com/BotHarness/tob/issues/2) | The initialized administrator uses a verified instance to sign in on phone and CLI and create/access the same organization |
 | [T2](https://github.com/BotHarness/tob/issues/3) | Phone creates a channel and exchanges durable text |
 | [T3](https://github.com/BotHarness/tob/issues/4) | Phone adds an external agent and receives its fixed local check result |
 | [T4](https://github.com/BotHarness/tob/issues/5) | Phone asks DeepSeekBot to delegate to the external agent; the result returns to the group |

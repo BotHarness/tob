@@ -14,13 +14,15 @@ Canonical delivery specification: https://github.com/BotHarness/tob/issues/1
 
 首个交付目标：手机登录自己的实例并创建群 → 接入 Mac 上的 DeepSeekBot A 与另一电脑的独立 Agent B → 手机 @A → A 向 B 转交预授权本机检查 → B 回报同群 → 手机看到结果。随后验证断线补历史、撤权和不重复工作；结果不明时明确报告。
 
+T1 的入口限定为部署者独立核验过的实例，且只有已初始化的 active 实例管理员能进入业务和建组织；后续切片不自动放开此限制。
+
 首条路径只是完整 MVP 的第一部分。本规格不把企业 SSO、auth.md、自建网盘或收费作为其前提。
 
 ## User Stories
 
 1. As an 实例部署者, I want 在自己的 Cloudflare 账号部署独立服务, so that 不依赖官方托管账号。
 2. As an 实例部署者, I want 受保护的管理员初始化与恢复入口, so that 公网访问者不能抢占实例。
-3. As a Human, I want 输入或扫码选择 HTTPS 服务地址并确认域名, so that 可以连接官方或自部署实例。
+3. As an 已初始化实例管理员, I want 输入或扫码选择部署者独立核验并固定配置的 HTTPS 实例, so that 在 T1 连接已确认归属的服务。
 4. As a Human, I want 通过该实例配置的 WorkOS 登录手机, so that 不需要先配对一台本地 Host。
 5. As a Human, I want 凭证和缓存按实例及身份隔离, so that 切换服务不会混用账号或消息。
 6. As a Human, I want 在被允许时创建自己的 Organization, so that 群和成员有清晰归属。
@@ -71,11 +73,13 @@ flowchart TB
 
 ### 2. 第一条路径的身份与部署合同
 
-- 手机输入/扫码预填 HTTPS 服务地址，确认域名，再使用系统登录流程访问该实例的 WorkOS。OAuth 回调、state/PKCE、令牌保存和组织切换按实际支持的原生客户端合同验证；不在 App 内嵌管理员 API key。
+- T1 只接入部署者独立核验过的实例。部署者从自己控制的 Cloudflare 与 WorkOS 配置核对并预先固定 API HTTPS origin、WorkOS Client ID、issuer/认证端点与移动回调的组合；不能仅凭目标实例返回的 discovery 或二维码完成核验。手机和 CLI 只使用该已核验组合，未知地址或配置不匹配时在发起登录前拒绝，不向它发送 token；配置变化须重新核验。公开发现仅检查兼容性与一致性，不建立信任。任意陌生实例即插即用不属于 T1。
+- 手机保持系统浏览器 Authorization Code + PKCE，CLI 保持设备授权；不增加认证中转、第二种 Human 会话、DPoP 或自动实例登记机制。手机 OAuth 专用回调定为 `ai.botharness.deepseekbot:/oauth2redirect`，开发版为 `ai.botharness.deepseekbot.dev:/oauth2redirect`，分别精确登记；现有 deepseekbot 导航 scheme 不作为新的 OAuth 回调。state、verifier、已核验实例及回调绑定为一次性事务，仍须真实原生构建验证。
 - 首条路径只启用一种 WorkOS 托管登录方式，建议邮箱密码；CLI 采用受支持的设备授权/浏览器确认流程。不自行接收用户密码来绕过登录。邮箱 OTP、Google、完整登录配置管理保留后续切片；用户名别名不是首片前提。
 - WorkOS 默认邮件替代原 Cloudflare 发 OTP 的默认假设；若后续仍要求 Cloudflare 发信，单独验证自定义邮件集成。当前不配置或发送邮件。
 - 实例管理员通过部署者受保护的初始化动作绑定到明确的 WorkOS user id，不能由首位公网注册者抢占。部署者可恢复管理资格；账号恢复交给 WorkOS，不重新实现密码重置。
-- 注册、创建组织、组织内建群是三个独立政策。官方首版邀请试用，首条路径仅部署者本人和两个 Agent；OAuth/托管登录成功不自动授权创建组织或加入群。
+- 注册、实例准入、创建组织、组织内建群是不同判断。T1 固定 registration_mode=admin_only、org_creation_mode=admin_only，WorkOS 关闭公开注册。仅本实例 instance_admin 中 status=active 的已初始化 Human 可进入业务入口或建组织；有效 WorkOS token、邀请记录或普通组织成员资格均不能替代此条件。缺少初始化/政策记录或无法确认管理员状态时拒绝业务管理；匿名发现/健康信息不授予业务访问。邀请其他 Human 的后续切片再扩展准入规则，不新增用户/邀请账本或通用策略编辑器。
+- WorkOS 新环境默认 member 不代表内置 owner。自部署必须建立/核验固定单角色 owner/member，member 保持默认，不自动升权；doctor 检查角色、单角色模式及映射是否匹配，不匹配时阻止建组织。组织创建者显式获得 owner，未知角色默认拒绝有权限要求的操作。实例管理员资格只授予 T1 准入、建组织及实例管理权限，不自动赋予其他组织的业务访问或任意 Agent 工作权。组织访问仍要求该组织的 active membership，组织管理还要求 owner；member 无组织管理权。
 - Worker 使用服务器密钥调用 WorkOS 管理 API 前，仍检查当前 Human 的应用权限。群 token 不能换取此能力。所有已交付管理能力都有独立服务 CLI；本地 Bot 操作有 DeepSeekBot CLI。
 - 未来企业 SSO/目录同步可利用 WorkOS，但本批任务不启用付费连接，不承诺所有 OAuth 配置都有管理 API。正式管理切片需核对 CLI 可覆盖范围。
 
@@ -86,7 +90,7 @@ flowchart TB
 | Owner / 表 | 主要字段与约束 | 用途 |
 | --- | --- | --- |
 | WorkOS 受管实体 | User、Session、Organization、Membership、Invitation | 云端身份权威；不在应用复制成可独立修改的认证表 |
-| D1 / instance_config | singleton_id PK、registration_mode、org_creation_mode、config_version | 实例准入/创建政策；不保存 API key 明文 |
+| D1 / instance_config | singleton_id PK、registration_mode、org_creation_mode、config_version | T1 两项模式固定 admin_only；缺失/非法值拒绝业务管理；不保存 API key 明文 |
 | D1 / instance_admin | workos_user_id PK、granted_by、granted_at、status | 实例超级管理员，区别于组织 owner |
 | D1 / organization_link | org_id PK、workos_org_id UQ、lifecycle、created_at | 实例内稳定组织映射；creating/active/disabled |
 | D1 / management_operation | operation_id PK、actor_id、kind、payload_hash、target_id、state、updated_at | 创建组织/映射的重试状态；同键不同载荷冲突 |
@@ -160,10 +164,13 @@ flowchart TB
 - 服务合同测试使用真实 Worker/D1/SQLite DO，验证跨组织/群拒绝、消息去重、历史边界、游标及撤权。测试 WorkOS 令牌及事件可使用受控签名 fixture，但必须另有获授权 staging 的真实登录/刷新/撤销证据；fixture 不冒充集成通过。
 - Host 复用既有 Messaging 入站、身份、Outbox/撤权测试与 CLI 同命令先例，不为云适配重写第二套 Messaging。新增用例只覆盖云 actor、来源传递、持久发送和恢复行为。
 - 手机沿用现有群管理网络调用及错误状态测试，另做真实手机无 Host 登录、建群、凭证管理、完整协作和回前台恢复。Node/Web 测试不代替原生回调与安全存储验证。
+- T1 必测：未核验地址、冒用其他实例 Client ID、核验后配置漂移均在登录/token 发送前被拒绝；未初始化、非 active 管理员及仅有有效 WorkOS token 的用户不能进入业务或建组织；owner 缺失/映射不符不能建组织；跨组织访问仍需 active membership。正式与开发 OAuth 回调精确匹配，旧导航回调不得完成云登录。
 - 每票有自动回归、可运行 CLI 路径、可操作界面与 Human QA。先验证前一条用户行为再扩展下一条，不先交付整层数据库或只交付无后端 UI。
 - 故障注入：云提交后 ACK 丢失、Host 本地提交后通知前崩溃、Agent 开始后结果持久化前崩溃、结果已保存但发送失败、重连/历史重放、过期与撤权。以持久消息、执行计数、公开状态和实际手机结果判断。
 
 ## Out of Scope
+
+T1 不支持任意未核验实例的自动信任，不引入新认证/实例登记协议、通用权限编辑器或额外用户/邀请账本。部署者手工核验是本切片明确的信任前提，不宣称已解决任意自部署实例的自动可信接入。
 
 本批不拆票：邀请另一位仅手机 Human、显式历史授权、完整 OTP/Google/登录管理覆盖、企业 SSO/目录同步、auth.md 自助认领、入站 Webhook、官方收费/额度运营、附件、真实推送以及全面自部署升级/备份。此前确认的相关 MVP 能力仍保留；此次仅推迟到首条路径之后。
 
@@ -182,3 +189,5 @@ Human 已明确暂不实现。全部挂起为 ready-for-human，明确启动后�
 
 规划文档：[仓库 README](https://github.com/BotHarness/tob#readme)、[T1 展开方案](https://github.com/BotHarness/tob/blob/main/docs/t1-design.md)。TOB 仅完成公开规划仓库初始化，未开始服务实现。
 
+
+本次审查修订依据：[WorkOS roles](https://workos.com/docs/authkit/roles-and-permissions)、[WorkOS invite-only](https://workos.com/docs/authkit/invite-only-signup)、[RFC 8252 §7.1](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.1)、[RFC 9700 §4.9.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.9.1)。仅更新设计与验收，不启动实施。

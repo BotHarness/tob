@@ -6,7 +6,7 @@
 
 ## 1. 要确认的结果
 
-部署者使用自己的 Cloudflare 和 WorkOS。手机没有任何已配对 Host，输入实例地址后登录、创建自己的组织；CLI 登录同一身份，看到同一组织。两边退出、刷新、组织切换和失权均可验证。
+部署者使用自己的 Cloudflare 和 WorkOS，并独立核验实例配置。T1 只允许已初始化且 active 的实例管理员进入业务和创建组织。手机没有任何已配对 Host，从已核验实例配置登录、创建自己的组织；CLI 登录同一身份，看到同一组织。两边退出、刷新、组织切换和失权均可验证。
 
 推荐手机采用 AuthKit Authorization Code + PKCE，CLI 采用 AuthKit Device Authorization。登录直接连接 WorkOS，业务访问 Hono Worker。无需 Auth DO、应用密码表或自行签发第二种 Human 会话。
 
@@ -53,6 +53,7 @@ tob/
 | WorkOS | 公共 Client ID、托管登录域名、服务端 API key | App/CLI 只拿公开配置；API key 留在 Worker |
 | WorkOS | 登录方式、移动回调白名单、Sign-out URI | 首片一种托管登录方式，沿用 spec 的邮箱密码建议；完整 OTP/Google 后续 |
 | WorkOS | 身份事件端点及签名 secret | 发往本实例 Worker；Events API 补漏，同步资格变化 |
+| WorkOS | 固定单角色 owner/member | 明确创建 owner，member 保持默认；核验角色和动作映射，缺失或不符阻止建组织 |
 
 T1 不需要 R2、KV、Queues、Cloudflare Tunnel、Cloudflare Access 或邮件发送服务。T2 才增加 Channel DO namespace；R2 在附件切片增加。Cron 与 D1 inbox 足够首片的低频身份事件恢复，暂不增加另一种队列资源。
 
@@ -69,7 +70,7 @@ WorkOS 自部署模式意味着“业务运行在自己的 Cloudflare，身份�
 | 公共实例配置 | INSTANCE_ID、PUBLIC_BASE_URL、协议版本 | Worker vars / 公开发现文档 |
 | 公共认证配置 | WORKOS_CLIENT_ID、受支持 issuer/AuthKit domain、固定移动回调 | Worker vars / 公开发现文档 |
 | 服务端秘密 | WORKOS_API_KEY、WORKOS_WEBHOOK_SECRET | Worker Secrets |
-| 应用政策 | 注册准入、建组织政策、配置版本 | D1；部署参数只初始化默认值，不能每次部署覆盖管理员修改 |
+| 应用政策 | registration_mode=admin_only、org_creation_mode=admin_only、配置版本 | T1 固定两项模式；D1 缺失/非法值拒绝业务管理，不提供策略编辑器 |
 | 资源绑定 | D1 的 INSTANCE_DB、Org DO 的 ORGS | Wrangler 配置，不需要把数据库密钥交给手机 |
 | 部署权限 | Cloudflare deploy 凭证 | 部署者机器/CI，不进入业务 App 或普通 CLI 登录配置 |
 | 用户凭证 | Access/refresh token | 手机安全存储、CLI OS 凭证库或明确配置的受限文件存储 |
@@ -79,20 +80,21 @@ WorkOS OAuth 设置不假定能靠我们的环境变量自动创建：Google 后
 ## 4. 部署者的最短操作路径
 
 1. 获取开源仓库，准备自己的 Cloudflare 账号和 WorkOS 环境，选定公开 HTTPS 地址。
-2. 在 WorkOS 设置一种登录方式、关闭不需要的开放注册，建立首个部署者用户；可通过 Dashboard 的账号/邀请能力完成首次准备，不要求应用先实现完整邀请 UI。
-3. 登记发布版 App 的精确回调 URI；开发构建使用单独回调。登记固定 Sign-out URI，配置身份事件接收地址。
-4. 部署工具创建 Worker/D1/Org DO binding，应用迁移，注入 Worker Secrets，配置 Cron；staging 和 production 分开。
+2. 在 WorkOS 设置一种登录方式并关闭公开注册，建立首个部署者用户；可通过 Dashboard 完成首次账号准备。创建或核验 owner/member 单角色配置，member 保持默认；不要求应用实现邀请 UI。
+3. 登记发布版 OAuth 回调 `ai.botharness.deepseekbot:/oauth2redirect`，开发版登记 `ai.botharness.deepseekbot.dev:/oauth2redirect`；不使用 wildcard。登记固定 Sign-out URI，配置身份事件接收地址。
+4. 部署工具创建 Worker/D1/Org DO binding，应用迁移，注入 Worker Secrets，配置 Cron；staging 和 production 分开。初始准入/建组织政策均为 admin_only；初始化完成前业务请求一律拒绝。
 5. 部署者通过受 Cloudflare 账号权限保护的初始化命令，将核验过的 WorkOS user_id 写入 instance_admin。这个命令不是匿名公网“第一个登录者成为管理员”。重复初始化须幂等；恢复另用显式恢复动作并记录审计。
-6. 普通 CLI 执行 doctor：检查实例版本、绑定/迁移、公开认证配置与事件同步状态；诊断不回显秘密。
-7. 手机和 CLI 分别登录，用业务 API 创建并查看组织。此后日常管理走普通账号权限，不需要部署凭证。
+6. 部署者从自己控制的 Cloudflare 地址配置与 WorkOS Dashboard 独立核对 API HTTPS origin、Client ID、issuer/认证端点、精确回调，形成 T1 的固定可信配置。目标站点自己的 discovery/二维码不作为核验凭据；无须新签名协议或官方登记中心。
+7. 通过该配置登录后，管理员 CLI 执行 doctor：检查实例版本、绑定/迁移、认证配置、角色/单角色模式、admin_only 政策和同步状态。非管理员不得读取内部诊断；诊断不回显秘密。
+8. 手机和 CLI 分别以已初始化管理员登录，用业务 API 创建并查看自己的组织。日常管理经过账号/组织权限检查，不需要部署凭证。
 
 初始化工具的实现建议是部署者本机通过 Cloudflare 管理面执行受限 D1 初始化，并核验 WorkOS 用户；它与普通 `tob` 远程业务命令的权限明确分开。恢复实例管理员资格不能恢复/绕过 WorkOS 用户账号认证。
 
 ## 5. 连接发现与手机登录
 
-公开发现端点建议为 `GET /.well-known/open-cloud-groups`。路径是我们的应用协议设计，不是 WorkOS 标准端点。返回实例 ID、服务地址、协议兼容范围、公共 Client ID、认证服务信息和支持能力；绝不返回 API key、组织名单或用户数据。
+公开发现端点为 `GET /.well-known/open-cloud-groups`。这是应用协议，不是 WorkOS 标准端点。返回实例 ID、服务地址、协议兼容范围、公共 Client ID、认证服务信息和支持能力；不返回 API key、组织名单或用户数据。T1 中 discovery 仅与部署者独立核验后预先固定的配置比较，不作为实例可信归属的证据；不新增自动核验、签名登记或通用 OIDC 机制。
 
-手机扫码只填入 HTTPS 实例地址，界面展示域名并让用户确认。二维码不携带长期密钥、用户身份或登录资格。发现信息固定在本次登录事务里，不能在回调时根据外部 URL 参数随意更换实例。
+手机输入/扫码只选择已核验配置中的 HTTPS 实例地址。仅点击确认域名不算独立核验。未知地址、Client ID/issuer/端点/回调不匹配时，在启动认证或发送 token 前拒绝；配置变化须由部署者重新核验，不自动接受。二维码不携带长期密钥、用户身份或资格。登录事务使用固定配置，回调参数不能更换实例。
 
 ```mermaid
 sequenceDiagram
@@ -100,8 +102,9 @@ sequenceDiagram
   participant M as 手机 App
   participant W as 实例 Hono Worker
   participant A as WorkOS / 系统浏览器
-  H->>M: 输入/扫码确认实例地址
+  H->>M: 选择部署者已核验的实例
   M->>W: 获取公开发现配置
+  M->>M: 比较已核验组合；不匹配即停止
   M->>M: 生成 state 与 PKCE verifier/challenge
   M->>A: 打开托管登录（公开 Client ID）
   H->>A: 完成登录
@@ -113,11 +116,11 @@ sequenceDiagram
   W-->>M: 实例准入、可用组织、可执行动作
 ```
 
-推荐回调形状为 `deepseekbot://cloud-auth/callback`，开发构建使用 `deepseekbot-dev://cloud-auth/callback`；这是待确认的路由合同。当前 App 已声明这两个 scheme，但尚无本云登录回调实现。每个自部署者把同一发布版回调登记在自己的 WorkOS application，运行时 Client ID 从实例读取，因此无须逐实例重新构建 App。
+OAuth 专用回调固定为 `ai.botharness.deepseekbot:/oauth2redirect`，开发版为 `ai.botharness.deepseekbot.dev:/oauth2redirect`，采用受控域名反写 scheme。现有 deepseekbot/deepseekbot-dev 导航 scheme 保留，但不作为 OAuth 回调。部署者精确登记相应回调；客户端使用已核验配置中的 Client ID，并与发现信息比较。设计不要求按实例重编 App，但新增 OAuth scheme 需要原生构建，尚未实现。
 
 手机通过系统浏览器登录，密码只提交到 WorkOS 页面。PKCE 的作用是让拿到回调 code 的另一程序也不能仅凭 code 换取登录凭证。还须生成随机 state，并把实例 origin、Client ID、回调 URI、verifier、过期时间绑定为一次性事务；重复回调、切换实例后的旧回调都拒绝。自定义 scheme 不等于系统保证独占，不能省略这些校验。
 
-公开发现允许的认证协议/服务域名必须校验，不能成为任意 token 转发器；令牌只发送到其绑定的实例和认证端点。T1 可先固定 WorkOS 官方 API 与已配置 AuthKit 域名，额外代理/通用 OIDC 留后续。实例改变 Client ID/issuer 时需重新确认和登录。
+令牌只发送到独立核验并固定的实例及认证端点；不接受 discovery 自动指定的新目的地。state/PKCE 保护认证事务，不能证明资源服务器归属，也不能防止客户端主动把 bearer 发送到冒牌实例。T1 通过明确的人工核验前提缩小范围，不宣称支持任意陌生实例安全接入；额外代理/通用 OIDC 留后续。
 
 Native OAuth 必须在实际开发/发布构建验证，不能以 Expo Go 或网页预览替代。官方示例证明原生路线存在，不证明我们的 SDK 57、多实例缓存、冷启动回调已通过。SDK 与 Expo AuthSession/HTTP 的具体选择在 T1 开始后结合当前依赖验证；不为复刻示例随意引入 Node SDK/native crypto。
 
@@ -125,7 +128,7 @@ Native OAuth 必须在实际开发/发布构建验证，不能以 Expo Go 或网
 
 拟定命令体验（尚未实现）：`tob login --server <HTTPS 地址>` → 显示实例与确认码 → 打开 WorkOS 页面确认 → CLI 登录成功；无浏览器机器可以在另一台设备打开验证码页面。
 
-1. 与手机读取同一发现文档，锁定服务 origin 和 Client ID。
+1. 与手机使用同一部署者已核验配置，读取发现文档进行一致性比较。未知实例或配置不匹配时，不申请 device code、不发送 token。
 2. 调用 WorkOS device authorization，获得用户码、私有 device_code、验证地址、到期时间与轮询间隔。
 3. 终端只展示用户确认码与验证地址；device_code 不输出。用户在浏览器核对验证码、登录并授权。
 4. CLI 按 WorkOS 给定间隔等待结果，处理 slow_down、取消、超时；获取 token 后按实例/身份保存。
@@ -135,19 +138,21 @@ CLI 不要求本机端口回调，也不复制用户密码。具体 device/refre
 
 ## 7. 登录后如何创建组织
 
-用户最初可以已登录但没有任何组织。`/me` 返回这个事实以及是否允许创建，而不是因为缺少 org_id 就让所有入口 401。
+已初始化的 active 实例管理员最初可以没有组织；`/me` 返回空组织列表并允许创建。未初始化、非 active 管理员或仅有 WorkOS 身份的用户，业务入口返回明确拒绝，不能因为 token 有效就进入实例。认证失败与已认证但无权进入须区分。
 
 手机“创建工作区”和 CLI `org create` 走同一服务命令：
 
-1. Worker 验证真实 Human、实例准入与建组织政策；客户端提交的名称不赋予权限。
+1. Worker 验证本实例 WorkOS Human、instance_admin 的 active 状态，以及两项 admin_only 政策；缺失或无法确认即拒绝。客户端提交的名称/角色/组织 ID 不赋予资格。
 2. D1 记录稳定 operation_id 和 payload hash；相同操作重试恢复同一流程。
-3. WorkOS 创建 Organization 和创建者的 owner membership；D1 建立唯一 organization_link。
+3. 确认 owner/member 单角色配置正确后，WorkOS 创建 Organization，并显式给创建者分配 owner membership；D1 建立唯一 organization_link。owner 缺失或映射不符不能回退为 member，也不能把 member 默认设为 owner。
 4. 初始化该 org_id 的 Org DO（组织设置、成员资格只读投影）。全部必要步骤完成后标 active，才能作为可用组织返回。
 5. 客户端通过 WorkOS 刷新/选择组织获得相应 org_id 的访问令牌，再访问组织业务 API；服务器核对 token 与目标组织。
 
 原生/CLI 每个会话单独拥有 refresh token；同一用户不共享设备 refresh token。组织切换的 WorkOS 机制见[会话文档](https://workos.com/docs/authkit/sessions)。登录成功、被实例接纳、组织成员资格、建组织资格是不同判断。
 
 跨 WorkOS/D1/Org DO 没有事务。创建接口的具体幂等/外部 ID 合同仍须 T1 实测；响应丢失后无法确认是否已创建时保持 processing/needs-review，并查证原资源，不盲目再次 create。T1 必须证明中途失败不会产生重复可用组织。
+
+固定权限规则：所有组织动作先通过 T1 的管理员准入；列表只显示本人的 active memberships，组织读取/切换仍须目标组织 active membership，组织管理还须 owner。member 无组织管理权，未知角色默认拒绝有权限要求的操作。instance_admin 不自动获得其他组织的内容访问或 Agent 工作权。非管理员即使是 WorkOS organization owner，也不能越过 T1 准入。T1 不新增成员邀请、角色编辑 UI 或管理命令。
 
 T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_access_projection。channel_directory、identity_delivery 与 Channel 全部表随 T2 增加，不提前实现空壳聊天层。
 
@@ -161,10 +166,19 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 
 ## 9. T1 验收与后续确认
 
-一次现场验收应能完成：新环境部署并初始化 → 无 Host 手机连地址 → 系统浏览器登录回 App → 创建组织 → CLI 独立登录看到同一组织 → 两边刷新/重启 → 切换第二个测试组织 → 退出一端不退出另一端 → 删除成员/撤销会话后请求被拒绝。
+一次现场验收应能完成：新环境部署并初始化 → 无 Host 手机选择已核验实例 → 系统浏览器登录回 App → 创建组织 → CLI 独立登录看到同一组织 → 两边刷新/重启 → 切换第二个测试组织 → 退出一端不退出另一端 → 删除成员/撤销会话后请求被拒绝。
 
-附带反例：不受邀身份不能因认证成功而加入实例；其他 WorkOS 环境 token 不能进入本实例；旧回调不能串号；操作重试不重复建组织；身份事件重复/乱序/暂失不恢复已撤权限。
+附带验收条件：
+
+- 未核验地址、冒用其他实例 Client ID、核验后的配置漂移，在启动认证/token 发送前被拒绝；手机与 CLI 一致。部署者核验记录来自独立控制面，不来自被测实例自述。
+- 未初始化实例、无 active 管理员资格的有效 WorkOS 用户、仅有组织 owner/member 资格的用户都不能进入业务或建组织；移除管理员资格后不能继续靠缓存进入。
+- owner 缺失、角色配置错误时 doctor 报告并阻止建组织；不能静默降级或扩大 member 权限。
+- 管理员创建自己的组织后持有 active owner membership；仍不能访问自己无 membership 的其他组织。
+- 正式/开发 OAuth 回调精确匹配；旧导航回调、错误 state、过期/重放回调不能完成登录。
+- 其他 WorkOS 环境 token 被拒绝；操作重试不重复建组织；身份事件重复/乱序/暂失不恢复已撤权限。
 
 目前仅核对文档、现有配置及任务，未完成任何新运行时集成。实际待证据项：WorkOS staging 原生 PKCE、CLI 授权、公共客户端刷新/组织切换、JWT claims、事件覆盖/时延、WorkOS 创建资源幂等与本项目 Drizzle 迁移。部署/真机 QA 在获准启动后执行。
 
-已认可的设计方向：采用以上仓库边界；T1 仅 Worker + D1 + Org DO；手机 PKCE、CLI device flow；同一实例的一个 WorkOS application；首个管理员由部署者绑定明确 user_id。确认设计不等于启动实施。
+已认可的设计方向：采用以上仓库边界；T1 仅 Worker + D1 + Org DO；手机 PKCE、CLI device flow；同一实例的一个 WorkOS application；首个管理员由部署者绑定明确 user_id。T1 仅已核验实例、active 初始化管理员准入与建组织；固定 owner/member 和独立 OAuth 回调。未新增机制，确认设计不等于启动实施。
+
+审查修订依据：[WorkOS roles](https://workos.com/docs/authkit/roles-and-permissions)、[RFC 8252 §7.1](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.1)、[RFC 9700 §4.9.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.9.1)。本次仅更新方案；实现、部署和真机验证尚未开始。
