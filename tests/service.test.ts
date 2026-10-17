@@ -23,7 +23,7 @@ it("migrates both real SQLite bindings and repeated migrations keep data", async
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
   const ready = await request("/readyz");
   expect(ready.status).toBe(200);
-  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 4, orgSchemaVersion: 2, businessEnabled: true });
+  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 4, orgSchemaVersion: 3, channelSchemaVersion: 1, businessEnabled: true });
   expect(await env.INSTANCE_DB.prepare("SELECT config_version FROM instance_config").first("config_version")).toBe(7);
   await expect(env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (2,'admin_only','admin_only',1)").run()).rejects.toThrow();
 });
@@ -48,9 +48,9 @@ it("Org migrations survive eviction without duplicate application and keep objec
     state.storage.sql.exec("INSERT INTO org_config (org_id,status,policy_json,version) VALUES ('org_fixture','active','{}',1)");
   });
   await evictDurableObject(first);
-  expect(await first.schemaStatus()).toEqual({ schemaVersion: 2 });
+  expect(await first.schemaStatus()).toEqual({ schemaVersion: 3 });
   expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM org_config").one().n)).toBe(1);
-  expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM __drizzle_migrations").one().n)).toBe(2);
+  expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM __drizzle_migrations").one().n)).toBe(3);
   expect(await runInDurableObject(second, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM org_config").one().n)).toBe(0);
 });
 
@@ -189,7 +189,7 @@ it("logout refuses provider redirects without following them or reporting revoca
 
 function organizationProvider(options: { loseCreate?: boolean; loseMembership?: boolean; missingRole?: boolean; userVerified?: boolean; missingUser?: boolean } = {}) {
   let org: { id: string; name: string; external_id: string } | undefined;
-  let member: { id: string; user_id: string; organization_id: string; status: string; role: { slug: string }; roles?: { slug: string }[] } | undefined;
+  let member: { created_at: string; id: string; user_id: string; organization_id: string; status: string; role: { slug: string }; roles?: { slug: string }[] } | undefined;
   const calls = { creates: 0, members: 0 };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(String(input));
@@ -203,7 +203,7 @@ function organizationProvider(options: { loseCreate?: boolean; loseMembership?: 
     if (url.pathname === "/organizations") { calls.creates++; org = { id: "org_test", name: data.name, external_id: data.external_id }; if (options.loseCreate) { options.loseCreate = false; throw new TypeError("lost response"); } return Response.json(org); }
     if (url.pathname === "/user_management/organization_memberships") {
       if (init?.method === "POST") {
-        calls.members++; member = { id: "om_test", user_id: data.user_id, organization_id: data.organization_id, status: "active", role: { slug: data.role_slug } };
+        calls.members++; member = { created_at: "2026-01-01T00:00:00.000Z", id: "om_test", user_id: data.user_id, organization_id: data.organization_id, status: "active", role: { slug: data.role_slug } };
         if (options.loseMembership) { options.loseMembership = false; throw new TypeError("lost response"); }
         return Response.json(member);
       }
@@ -378,4 +378,75 @@ it('upgrades an already initialized instance without changing admin binding or o
   expect(await env.INSTANCE_DB.prepare('SELECT workos_user_id FROM instance_admin').first('workos_user_id')).toBe('user_admin');
   await initialize('user_other');
   expect(await env.INSTANCE_DB.prepare('SELECT workos_user_id FROM instance_admin').first('workos_user_id')).toBe('user_admin');
+});
+
+async function channelFixture() {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  const provider = organizationProvider();
+  expect((await orgRequest("", "POST", { name: "Channels workspace" })).status).toBe(200);
+  const call = (path = "", method = "GET", body?: unknown, key = "channel-operation-0001", claims: JWTPayload = { org_id: "org_test" }) => orgRequest("/org_test/channels" + path, method, body, claims, key);
+  return { provider, call };
+}
+it("creates multiple channels, replays one operation, persists messages across eviction and rejects changed payload", async () => {
+  const { call } = await channelFixture();
+  const first = await (await call("", "POST", { name: "general" })).json() as { channelId: string };
+  const same = await Promise.all(Array.from({ length: 3 }, () => call("", "POST", { name: "general" })));
+  for (const result of same) expect(await result.json()).toMatchObject(first);
+  expect((await call("", "POST", { name: "changed" })).status).toBe(409);
+  const second = await (await call("", "POST", { name: "research" }, "channel-operation-0002")).json() as { channelId: string };
+  expect(first.channelId).not.toBe(second.channelId);
+  expect(await (await call()).json()).toMatchObject({ channels: expect.arrayContaining([{ channelId: first.channelId, name: "general", creatorId: "user_admin", creatorType: "human", createdAt: expect.any(String) }]), nextCursor: null });
+  const path = "/" + first.channelId + "/messages";
+  const sent = await (await call(path, "POST", { text: "First durable text" })).json();
+  expect(sent).toMatchObject({ message: { sequence: 1, authorId: "user_admin", text: "First durable text" }, replayed: false });
+  expect(await (await call(path, "POST", { text: "First durable text" })).json()).toMatchObject({ replayed: true, message: { sequence: 1 } });
+  expect((await call(path, "POST", { text: "Changed text" })).status).toBe(409);
+  const concurrent = await Promise.all(Array.from({ length: 3 }, () => call(path, "POST", { text: "Concurrent text" }, "message-operation-0002")));
+  for (const r of concurrent) expect(await r.json()).toMatchObject({ message: { sequence: 2 } });
+  await evictDurableObject(env.CHANNELS.getByName(first.channelId));
+  await evictDurableObject(env.ORGS.getByName("org_test"));
+  expect(await (await call(path)).json()).toMatchObject({ messages: [{ sequence: 1 }, { sequence: 2 }], nextCursor: 2, hasMore: false });
+  expect(await (await call(path + "?after=1")).json()).toMatchObject({ messages: [{ sequence: 2 }], nextCursor: 2 });
+  expect(await (await call("/" + second.channelId + "/messages")).json()).toEqual({ messages: [], nextCursor: 0, hasMore: false });
+  for (const cursor of ["-1", "NaN", "3", "9007199254740992"]) expect((await call(path + "?after=" + cursor)).status).toBe(400);
+});
+it("checks current membership on every channel request, enforces creator policy and ignores spoofed authors", async () => {
+  const { call, provider } = await channelFixture();
+  const first = await (await call("", "POST", { name: "general" })).json() as { channelId: string };
+  const path = "/" + first.channelId + "/messages";
+  expect((await call(path, "POST", { text: "spoof", authorId: "user_other" })).status).toBe(400);
+  expect((await call("", "GET", undefined, "channel-operation-0001", {})).status).toBe(403);
+  expect((await orgRequest("/org_other/channels/" + first.channelId, "GET", undefined, { org_id: "org_other" })).status).toBe(403);
+  provider.member!.role.slug = "member";
+  expect((await call()).status).toBe(200);
+  expect((await call("", "POST", { name: "forbidden" }, "channel-operation-0003")).status).toBe(403);
+  expect((await call(path, "POST", { text: "member text" })).status).toBe(200);
+  provider.member!.created_at = new Date(Date.now() + 1000).toISOString();
+  expect(await (await call(path)).json()).toMatchObject({ messages: [] });
+  provider.member!.status = "inactive";
+  for (const [route, method, body] of [["", "GET", undefined], [path, "GET", undefined], [path, "POST", { text: "revoked" }]] as const) expect((await call(route, method, body)).status).toBe(403);
+});
+it("hides incomplete channel initialization and repairs the same durable operation after failure", async () => {
+  const { call } = await channelFixture();
+  const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(["org_test", "human", "user_admin", "channel-operation-0001"])))), b => b.toString(16).padStart(2, "0")).join("");
+  const stub = env.CHANNELS.getByName("ch_" + digest);
+  await stub.schemaStatus();
+  await runInDurableObject(stub, (_instance, state) => { state.storage.sql.exec("CREATE TRIGGER fail_initialize BEFORE INSERT ON channel_config BEGIN SELECT RAISE(ABORT, 'INJECTED_FAILURE'); END"); });
+  expect((await call("", "POST", { name: "general" })).status).toBe(503);
+  expect(await (await call()).json()).toEqual({ channels: [], nextCursor: null });
+  await evictDurableObject(env.ORGS.getByName("org_test"));
+  await runInDurableObject(stub, (_instance, state) => { state.storage.sql.exec("DROP TRIGGER fail_initialize"); });
+  expect(await (await call("", "POST", { name: "general" })).json()).toMatchObject({ channelId: "ch_" + digest });
+  expect((await (await call()).json() as { channels: unknown[] }).channels).toHaveLength(1);
+});
+it("accepts bounded Unicode messages and paginates durable history without skipping rows", async () => {
+  const { call } = await channelFixture();
+  const channel = await (await call("", "POST", { name: "general" })).json() as { channelId: string };
+  const path = "/" + channel.channelId + "/messages";
+  expect((await call(path, "POST", { text: "测".repeat(4000) })).status).toBe(200);
+  expect((await call(path, "POST", { text: "测".repeat(4001) }, "message-too-long-0001")).status).toBe(400);
+  for (let n = 2; n <= 51; n++) expect((await call(path, "POST", { text: "Message " + n }, "page-operation-" + String(n).padStart(4,"0"))).status).toBe(200);
+  const first = await (await call(path)).json() as { messages: { sequence: number }[]; hasMore: boolean; nextCursor: number };
+  expect(first.messages).toHaveLength(50);expect(first.hasMore).toBe(true);expect(first.nextCursor).toBe(50);
+  expect(await (await call(path + "?after=" + first.nextCursor)).json()).toMatchObject({ messages: [{ sequence: 51 }], nextCursor: 51, hasMore: false });
 });

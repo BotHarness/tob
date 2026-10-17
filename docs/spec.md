@@ -130,7 +130,7 @@ flowchart TB
 
 - D1 只存应用登记和可靠同步，不为每条消息或每个接收者写一条身份查询记录。Secrets 留在部署配置；跨实例令牌/密钥不混用。
 - WorkOS organization id 与应用 org_id 一一映射；客户端 active organization 只是导航状态。服务端验证访问令牌、目标 org 和 Channel 的归属，不能由 URL 参数赋予资格。
-- 群私有：组织成员资格不意味着能看所有群名称或消息。目录列表按实际群访问范围过滤；首片可做有界分页核验，不先建设全局搜索索引。
+- 最新协作目标：活跃组织成员可见该组织全部频道，不先做频道可见性矩阵。直接受邀的外部频道访客只获得该频道资格，不因此成为整个组织成员。目录与历史均分页；不先建设全局搜索。
 - actor_id 与显示名分离；不同主机上的同名 Bot 是不同身份。首版外部 Agent 是群限定身份，不建立全局 Agent 应用商店。
 - message 的 kind 区分文本、工作请求、结果和系统事件。系统事件记录成员/凭证变更但不泄密；消息作者派生自受信上下文。
 - read_from_seq 默认加入后的下一条序号。同一 Human 换设备继承本人历史；新 Agent/新 Human 默认不读旧历史。重新加入不自动恢复旧权限。显式授予旧历史后续实现。
@@ -311,3 +311,11 @@ The bounded UAT mobile path, deployment callback opt-in, public QR export and ex
 ## Expanded multi-user delivery scope
 
 See [multi-user collaboration](multi-user-collaboration.md). The Human has authorized these UAT tracer bullets; this supersedes the earlier admin-only end-user limitation, while preserving protected instance initialization and the no-merge/no-Prod boundary.
+
+## T2 首条 HTTP 频道切片（2026-10-18，尚待 UAT）
+
+Owner 在选定组织创建多个频道；活跃成员可列出频道和收发文本。Org DO 保存稳定创建操作与 creating/active 目录，Channel DO 单独保存配置和自增序号消息。初始化成功才激活目录；重试同一操作沿用同一频道。文本以作者类型、作者 ID 与客户端操作键去重；同键异内容冲突。
+
+本切片公开 HTTP 与 CLI；手机复用 CloudClient 会话和持久待确认操作。频道创建与消息发送的待确认操作绑定用户、组织和目标频道，重启后仍使用同一键。实例配置替换或退出清理此状态。列表/历史每页最多 50 条。正文上限 4000 字符，无附件。
+
+历史暂以权威 WorkOS 当前成员记录的 created_at 作为最早可读时间，保守拒绝缺少该字段的记录。这不构成撤销后重新加入、旧历史授权或完整 read_from_seq 的验收；事件同步与直接频道访客切片必须补齐。每次 HTTP 访问仍核验当前组织成员；未新增连接缓存。WebSocket、活动连接失效、成员显示、邀请和 Agent 交互尚未在这条 HTTP 子片完成，T2 不因此关闭。

@@ -17,3 +17,13 @@ export const memberAccessProjection = sqliteTable("member_access_projection", {
   role: text("role").notNull(),
   verifiedAt: text("verified_at").notNull(),
 });
+
+export const channelDirectory = sqliteTable("channel_directory", {
+  channelId: text("channel_id").primaryKey(),
+  operationId: text("operation_id").notNull().unique(),
+  name: text("name").notNull(),
+  creatorId: text("creator_id").notNull(),
+  creatorType: text("creator_type", { enum: ["human", "agent"] }).notNull(),
+  status: text("status", { enum: ["creating", "active"] }).notNull(),
+  createdAt: text("created_at").notNull(),
+});

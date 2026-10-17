@@ -1,9 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gt, asc } from "drizzle-orm";
 import migrations from "../db/org/migrations/migrations";
-import { orgConfig, memberAccessProjection } from "../db/org/schema";
+import { orgConfig, memberAccessProjection, channelDirectory } from "../db/org/schema";
 type VerifiedMember = { id: string; user_id: string; organization_id: string; status: string; role: { slug: string } };
 export class Org extends DurableObject<Env> {
   private readonly db;
@@ -12,7 +12,7 @@ export class Org extends DurableObject<Env> {
     this.db = drizzle(ctx.storage);
     ctx.blockConcurrencyWhile(async () => { await migrate(this.db, migrations); });
   }
-  schemaStatus() { this.db.select().from(orgConfig).limit(1).all(); return { schemaVersion: 2 }; }
+  schemaStatus() { this.db.select().from(orgConfig).limit(1).all(); return { schemaVersion: 3 }; }
   initialize(orgId: string, name: string) {
     const old = this.db.select().from(orgConfig).get();
     if (old && (old.orgId !== orgId || old.status !== "active")) throw new Error("ORG_STATE_CONFLICT");
@@ -36,4 +36,27 @@ export class Org extends DurableObject<Env> {
     const rows = this.db.update(orgConfig).set({ description, version: version + 1 }).where(and(eq(orgConfig.orgId, orgId), eq(orgConfig.status, "active"), eq(orgConfig.version, version))).returning().all();
     return rows.length ? this.read(orgId) : null;
   }
+  async createChannel(orgId: string, member: VerifiedMember, operationId: string, channelId: string, name: string) {
+    this.read(orgId); this.observe(orgId, member);
+    if (member.role.slug !== "owner") throw new Error("OWNER_REQUIRED");
+    this.db.insert(channelDirectory).values({ channelId, operationId, name, creatorId: member.user_id, creatorType: "human", status: "creating", createdAt: new Date().toISOString() }).onConflictDoNothing().run();
+    const row = this.db.select().from(channelDirectory).where(eq(channelDirectory.operationId, operationId)).get();
+    if (!row || row.channelId !== channelId || row.name !== name || row.creatorId !== member.user_id) return null;
+    const value = { channelId: row.channelId, organizationId: orgId, name: row.name, creatorId: row.creatorId, creatorType: row.creatorType, createdAt: row.createdAt };
+    // External RPC is outside the local transaction; retry uses the same durable directory row.
+    await this.env.CHANNELS.getByName(channelId).initialize(value);
+    this.db.update(channelDirectory).set({ status: "active" }).where(eq(channelDirectory.channelId, channelId)).run();
+    return value;
+  }
+  channels(orgId: string, member: VerifiedMember, after?: string) {
+    this.read(orgId); this.observe(orgId, member);
+    const rows = this.db.select({ channelId: channelDirectory.channelId, name: channelDirectory.name, creatorId: channelDirectory.creatorId, creatorType: channelDirectory.creatorType, createdAt: channelDirectory.createdAt }).from(channelDirectory).where(and(eq(channelDirectory.status, "active"), after ? gt(channelDirectory.channelId, after) : undefined)).orderBy(asc(channelDirectory.channelId)).limit(51).all();
+    return { channels: rows.slice(0, 50), nextCursor: rows.length > 50 ? rows[49].channelId : null };
+  }
+  channel(orgId: string, member: VerifiedMember, channelId: string) {
+    this.read(orgId); this.observe(orgId, member);
+    const row = this.db.select().from(channelDirectory).where(and(eq(channelDirectory.channelId, channelId), eq(channelDirectory.status, "active"))).get();
+    return row ? { channelId: row.channelId, organizationId: orgId } : null;
+  }
+
 }

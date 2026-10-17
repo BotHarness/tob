@@ -143,3 +143,17 @@ Organization creation, CLI selection and permission verification: [T1 organizati
 ### Multi-user onboarding candidate
 
 The next UAT slice supports ordinary WorkOS users, one default workspace per user, and additional workspaces. New instances remain closed until the deployment operator enables the policy. See [scope, recovery and UAT operator commands](docs/multi-user-collaboration.md). CLI login prepares the default workspace; `node apps/cli/tob.mjs onboard --server https://YOUR_INSTANCE` retries preparation using the saved session. The dedicated `tools/testing/uat-users.mjs PROFILE PRIVATE_DIRECTORY` harness creates synthetic UAT users and private independent sessions; it does not test Hosted AuthKit or enable public registration.
+
+### Channel HTTP tracer bullet (UAT candidate)
+
+Select a workspace with `tob org use` first. Commands use the same current identity and organization checks as mobile.
+
+```sh
+node apps/cli/tob.mjs channel create --server "$TOB_SERVER" --name general --operation channel-create-0001
+node apps/cli/tob.mjs channel list --server "$TOB_SERVER"
+node apps/cli/tob.mjs channel show --server "$TOB_SERVER" --id "$TOB_CHANNEL"
+node apps/cli/tob.mjs channel send --server "$TOB_SERVER" --id "$TOB_CHANNEL" --text-file ./message.txt --operation message-send-0001
+node apps/cli/tob.mjs channel history --server "$TOB_SERVER" --id "$TOB_CHANNEL" --after 0
+```
+
+Keep the same operation key and body after an uncertain response. Channel creation is owner-only; active organization members can read/send. A claimed actor in the body is rejected. This HTTP slice does not yet implement WebSocket, invitations, channel guests or Agent credentials.

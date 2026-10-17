@@ -5,7 +5,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { organizationLink, managementOperation } from "../db/d1/schema";
 import { admit, requireOrganizationCreation, AccessError } from "./auth/admission";
 
-type Membership = { id: string; user_id: string; organization_id: string; status: string; role: { slug: string }; roles?: { slug: string }[] };
+type Membership = { created_at?: string; id: string; user_id: string; organization_id: string; status: string; role: { slug: string }; roles?: { slug: string }[] };
 type ProviderOrg = { id: string; name: string; external_id: string };
 export async function workos<T>(env: Env, path: string, body?: unknown): Promise<T | null> {
   if (!env.WORKOS_API_KEY) throw new AccessError("IDENTITY_UNAVAILABLE", 503);
@@ -75,8 +75,8 @@ export async function createOrganization(env: Env, actorId: string, key: string,
   ]);
   return { organizationId: org.id, operationId, created: true };
 }
+const organizationBody = bodyLimit({ maxSize: 4096, onError: c => c.json({ error: { code: "INVALID_ORGANIZATION_INPUT" } }, 400) });
 export const organizations = new Hono<{ Bindings: Env }>()
-  .use("*", bodyLimit({ maxSize: 4096, onError: c => c.json({ error: { code: "INVALID_ORGANIZATION_INPUT" } }, 400) }))
   .get("/", async c => {
     const identity = await admit(c.req.header("Authorization"), c.env);
     const after = c.req.query("after");
@@ -91,7 +91,7 @@ export const organizations = new Hono<{ Bindings: Env }>()
     }));
     return c.json({ organizations: data, nextCursor: page.list_metadata.after });
   })
-  .post("/", async c => {
+  .post("/", organizationBody, async c => {
     const identity = await admit(c.req.header("Authorization"), c.env);
     await requireOrganizationCreation(identity, c.env);
     let body; try { body = await c.req.json(); } catch { throw new AccessError("INVALID_ORGANIZATION_INPUT", 400); }
@@ -109,7 +109,7 @@ export const organizations = new Hono<{ Bindings: Env }>()
     const m = await access(c.env, i.userId, c.req.param("id"));
     return c.json({ ...await c.env.ORGS.getByName(m.organization_id).view(m.organization_id, m), role: m.role.slug });
   })
-  .patch("/:id", async c => {
+  .patch("/:id", organizationBody, async c => {
     const i = await admit(c.req.header("Authorization"), c.env);
     if (i.organizationId !== c.req.param("id")) throw new AccessError("ORGANIZATION_TOKEN_REQUIRED", 403);
     const m = await access(c.env, i.userId, c.req.param("id"));

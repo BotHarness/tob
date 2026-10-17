@@ -155,3 +155,30 @@ test('ordinary-user login and explicit onboarding retry preserve the authenticat
  assert.equal((result as {instanceRole:string}).instanceRole,'user');
  assert.equal((result as {defaultOrganizationId:string}).defaultOrganizationId,'org_default');
 });
+
+test('channel commands require selected organization and use formal public routes with stable operation keys', async () => {
+ await setup();
+ await fails(execute(['channel','list','--server',config.server],rt),'ORGANIZATION_TOKEN_REQUIRED');
+ orgSelected='org_channels'; await command('refresh');
+ const previous=globalThis.fetch; const seen:{path:string;method:string;body:unknown;operation:string|null}[]=[];
+ const channelId='ch_'+'a'.repeat(64);
+ globalThis.fetch=async(url,init)=>{
+  const u=new URL(String(url));
+  if(u.pathname.startsWith('/api/organizations/org_channels/channels')) {
+   assert.ok(new Headers(init?.headers).get('Authorization')?.startsWith('Bearer '));
+   seen.push({path:u.pathname+u.search,method:init?.method??'GET',body:init?.body?JSON.parse(String(init.body)):null,operation:new Headers(init?.headers).get('Idempotency-Key')});
+   return Response.json({channelId,accepted:true});
+  }
+  return previous(url,init);
+ };
+ const run=(...args:string[])=>execute(['channel',...args,'--server',config.server],rt);
+ await run('create','--name','general','--operation','channel-operation-0001');
+ await run('list'); await run('show','--id',channelId); await run('history','--id',channelId,'--after','2');
+ const file=join(root,'message.txt');writeFileSync(file,'Durable text');
+ await run('send','--id',channelId,'--text-file',file,'--operation','message-operation-0001');
+ assert.equal(seen.length,5);
+ assert.deepEqual(seen[0],{path:'/api/organizations/org_channels/channels',method:'POST',body:{name:'general'},operation:'channel-operation-0001'});
+ assert.equal(seen[3].path.endsWith('/messages?after=2'),true);
+ assert.deepEqual(seen[4].body,{text:'Durable text'});assert.equal(seen[4].operation,'message-operation-0001');
+ await fails(run('list','--org','org_other'),'ORGANIZATION_TOKEN_REQUIRED');assert.equal(seen.length,5);
+});

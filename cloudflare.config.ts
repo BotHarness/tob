@@ -4,7 +4,7 @@ import { resolveTarget } from "./tools/deployment/target.ts";
 
 export default defineConfig(({ mode }) => {
   const target = resolveTarget(mode, process.env);
-  const owner = { name: target.workerName, entrypoint, compatibilityDate: "2026-10-17", exports: { Org: exports.durableObject({ storage: "sqlite" }) } };
+  const owner = { name: target.workerName, entrypoint, compatibilityDate: "2026-10-17", exports: { Org: exports.durableObject({ storage: "sqlite" }), Channel: exports.durableObject({ storage: "sqlite" }) } };
   return {
     accountId: target.accountId,
     worker: {
@@ -19,10 +19,11 @@ export default defineConfig(({ mode }) => {
         logs: { enabled: true, invocationLogs: false },
         traces: { enabled: true, headSamplingRate: 0.1 },
       },
-      exports: { Org: exports.durableObject({ storage: "sqlite" }) },
+      exports: { Org: exports.durableObject({ storage: "sqlite" }), Channel: exports.durableObject({ storage: "sqlite" }) },
       env: {
         INSTANCE_DB: bindings.d1({ id: target.databaseId }),
-        ORGS: bindings.durableObject({ worker: owner, exportName: "Org" }),
+        ORGS: bindings.durableObject({ worker: owner, exportName: "Org" as const }),
+        CHANNELS: bindings.durableObject({ worker: owner, exportName: "Channel" as const }),
         WORKOS_API_KEY: target.environment === "local" ? bindings.json("local-test-secret") : bindings.secret(),
         MOBILE_REDIRECT_URI: bindings.json(target.mobileRedirectUri),
         PUBLIC_BASE_URL: bindings.json(target.publicBaseUrl),
