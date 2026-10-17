@@ -319,3 +319,7 @@ Owner 在选定组织创建多个频道；活跃成员可列出频道和收发�
 本切片公开 HTTP 与 CLI；手机复用 CloudClient 会话和持久待确认操作。频道创建与消息发送的待确认操作绑定用户、组织和目标频道，重启后仍使用同一键。实例配置替换或退出清理此状态。列表/历史每页最多 50 条。正文上限 4000 字符，无附件。
 
 历史暂以权威 WorkOS 当前成员记录的 created_at 作为最早可读时间，保守拒绝缺少该字段的记录。这不构成撤销后重新加入、旧历史授权或完整 read_from_seq 的验收；事件同步与直接频道访客切片必须补齐。每次 HTTP 访问仍核验当前组织成员；未新增连接缓存。WebSocket、活动连接失效、成员显示、邀请和 Agent 交互尚未在这条 HTTP 子片完成，T2 不因此关闭。
+
+### Channel HTTP UAT evidence (2026-10-18)
+
+The current evidence record is [Multi-user collaboration — channel HTTP slice](multi-user-collaboration.md#channel-http-slice--uat-verification-2026-10-18-jst). Mobile creation, independent CLI agreement, durable text roundtrip, current owner/member enforcement and session isolation have actual UAT evidence. This does not qualify WebSocket delivery, invitations, Agent work, rejoin/history grants or the remaining T1 identity event gates. Keep T1/T2 open and proceed to the bounded organization invitation slice under the Human's autonomous UAT goal.
