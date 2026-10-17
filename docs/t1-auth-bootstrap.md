@@ -43,7 +43,21 @@ For this slice, run login before initialization to observe a valid identity reje
 
 ## Evidence and remaining boundaries
 
-Local tests cover JWT signature/issuer/audience/expiry, unknown Human and provider failure, missing policy, immediate D1 revocation, actual invitation/verified-email mismatch, competing first administrators, response-loss replay, inactive grants and rollback after a policy insert. CI and live UAT evidence are recorded after running, separately from these source tests.
+Verified on 2026-10-18 JST, in UAT only. Implementation [PR #8](https://github.com/BotHarness/tob/pull/8) and issuer correction [PR #9](https://github.com/BotHarness/tob/pull/9) are merged. Exact deployed source: `3e1eb9eb0ce7364a51a4707fc6367bd8b1de380f`; [deployment/check/smoke run](https://github.com/BotHarness/tob/actions/runs/39046093234) succeeded. Subsequent documentation commits do not imply a new deployment.
+
+| Evidence boundary | Observed result |
+| --- | --- |
+| WorkOS control plane | Public signup disabled; application-only invitation accepted; actual accepted user matches the chosen verified email; fresh MCP check reports not banned. Account identifiers/email and invitation/session material remain private. |
+| First runtime attempt | Device authorization succeeded but generic issuer configuration rejected the valid token. No administrator was bound during this failure. Official client discovery and independent signature verification identified the client-specific issuer. The regression now rejects generic and different-client issuers; deployment checks discovery before mutation. |
+| Signed identity before initialization | Real authorized device session, refreshed through the official public-client grant for evidence collection, received HTTP 503 `INSTANCE_NOT_INITIALIZED`. |
+| Protected initialization | The tool rechecked invitation/user and UAT Worker/D1 bindings, then atomically created one administrator, one policy and one initialization receipt. No public bootstrap route. |
+| Same identity after initialization | `/api/me` returned HTTP 200; verified user and instance match, role `admin`. No tokens printed. |
+| Same-target retry | Running initialization again left all three records byte-for-byte equivalent as parsed rows, including original grant metadata. This is a real replay test, not a simulated network-interruption test. |
+| Other entry points | Anonymous `/api/me` returns 401; organization commands return 503 `FEATURE_NOT_AVAILABLE`. No organization or group was created. |
+| Test cleanup | Revocation requests sent for the two test sessions; authoritative session-list readback reports none remaining, and the local test token file was removed. This does not establish immediate invalidation of already-issued access tokens. |
+| Automated checks | Typecheck/build, 8 workerd tests, 4 Node tests and 2 preparation-wizard tests pass in CI. Concurrent initialization, rollback, other users, revoked administrator and provider failure are local runtime tests, not separate live cloud fault injections. |
+
+Local tests cover JWT signature/issuer/audience/expiry, unknown Human and provider failure, missing policy, immediate D1 revocation, actual invitation/verified-email mismatch, competing first administrators, response-loss replay, inactive grants and rollback after a policy insert. WorkOS API-key environment attribution remains the previously recorded usage-log correlation evidence; the login proof does not turn that into direct key introspection. No WorkOS server key or webhook secret was added to the Worker for this JWKS-only slice.
 
 Trusted configuration import/QR, mobile PKCE callbacks, product CLI login/refresh/logout, organizations/roles/reconciliation, signed events and native Human QA remain pending. The initial invitation may use the configured Google provider in WorkOS Staging; that does not qualify production OAuth credentials.
 
