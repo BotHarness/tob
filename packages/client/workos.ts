@@ -13,7 +13,8 @@ export async function verifyHumanToken(header: string | undefined, clientId: str
     // WorkOS AuthKit tokens may omit aud. When present, never ignore it.
     if (payload.aud !== undefined && !(typeof payload.aud === "string" ? payload.aud === clientId : Array.isArray(payload.aud) && payload.aud.includes(clientId))) throw new AuthenticationError("INVALID_TOKEN");
     if (payload.azp !== undefined && payload.azp !== clientId) throw new AuthenticationError("INVALID_TOKEN");
-    return { userId: payload.sub, sessionId: payload.sid, expiresAt: payload.exp! };
+    if (payload.org_id !== undefined && (typeof payload.org_id !== "string" || !/^org_[A-Za-z0-9]+$/.test(payload.org_id))) throw new AuthenticationError("INVALID_TOKEN");
+    return { userId: payload.sub, sessionId: payload.sid, expiresAt: payload.exp!, organizationId: payload.org_id as string | undefined };
   } catch (error) {
     // Provider failures are unavailable, not an invitation to bypass auth.
     if (error instanceof TypeError || (error instanceof Error && ["ERR_JWKS_TIMEOUT", "ERR_JOSE_GENERIC"].includes((error as { code?: string }).code ?? ""))) throw new Error("IDENTITY_PROVIDER_UNAVAILABLE");

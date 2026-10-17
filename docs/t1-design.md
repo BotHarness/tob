@@ -1,3 +1,5 @@
+> Organization implementation slice: [mobile → CLI → owner/member boundary](t1-organizations.md). Source and UAT evidence are tracked separately; T1 stays open.
+
 # T1 展开：仓库、自部署、手机与 CLI 登录
 
 状态：T1 的部署与 WorkOS 登录/首个管理员初始化增量已在真实 UAT 验证。健康/版本、D1 与 Org DO 迁移、JWT 校验、受保护的原子初始化和 `/api/me` 已实现；组织/群命令仍关闭。可信配置文件导入及正式 CLI 登录、刷新、退出也已通过真实 UAT 验证；手机及组织路径仍待完成，T1 保持开放，T2–T5 与 Prod 未启动。

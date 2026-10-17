@@ -11,7 +11,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 it("reports its release but cannot report ready before D1 migrations", async () => {
   const live = await request("/healthz");
   expect(live.status).toBe(200);
-  expect(await live.json()).toMatchObject({ service: "tob", environment: "local", releaseSha: "local", businessEnabled: false });
+  expect(await live.json()).toMatchObject({ service: "tob", environment: "local", releaseSha: "local", businessEnabled: true });
   const ready = await request("/readyz");
   expect(ready.status).toBe(503);
   expect(await ready.json()).toEqual({ error: { code: "STORAGE_UNAVAILABLE" } });
@@ -23,14 +23,14 @@ it("migrates both real SQLite bindings and repeated migrations keep data", async
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
   const ready = await request("/readyz");
   expect(ready.status).toBe(200);
-  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 2, orgSchemaVersion: 1, businessEnabled: false });
+  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 3, orgSchemaVersion: 2, businessEnabled: true });
   expect(await env.INSTANCE_DB.prepare("SELECT config_version FROM instance_config").first("config_version")).toBe(7);
   await expect(env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (2,'admin_only','admin_only',1)").run()).rejects.toThrow();
 });
 
 it("exposes no public bootstrap or business writes, even with spoofed identity", async () => {
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
-  for (const path of ["/api/organizations", "/api/admin/initialize"]) {
+  for (const path of ["/api/admin/initialize"]) {
     const response = await request(path, { method: "POST", headers: { Authorization: "Bearer public-test-fixture", "X-User-Id": "user_fixture", "X-Role": "owner" } });
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: { code: "FEATURE_NOT_AVAILABLE" } });
@@ -45,12 +45,12 @@ it("Org migrations survive eviction without duplicate application and keep objec
   await first.schemaStatus();
   await second.schemaStatus();
   await runInDurableObject(first, (_instance, state) => {
-    state.storage.sql.exec("INSERT INTO org_config VALUES ('org_fixture','active','{}',1)");
+    state.storage.sql.exec("INSERT INTO org_config (org_id,status,policy_json,version) VALUES ('org_fixture','active','{}',1)");
   });
   await evictDurableObject(first);
-  expect(await first.schemaStatus()).toEqual({ schemaVersion: 1 });
+  expect(await first.schemaStatus()).toEqual({ schemaVersion: 2 });
   expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM org_config").one().n)).toBe(1);
-  expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM __drizzle_migrations").one().n)).toBe(1);
+  expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM __drizzle_migrations").one().n)).toBe(2);
   expect(await runInDurableObject(second, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM org_config").one().n)).toBe(0);
 });
 
@@ -185,4 +185,87 @@ it("logout refuses provider redirects without following them or reporting revoca
   expect(await r.json()).toEqual({ error: { code: "LOGOUT_UNCONFIRMED" } });
   expect(calls).toEqual(["https://api.workos.com/user_management/sessions/revoke"]);
   expect(logs).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_response", status: 302 }));
+});
+
+function organizationProvider(options: { loseCreate?: boolean; loseMembership?: boolean; missingRole?: boolean } = {}) {
+  let org: { id: string; name: string; external_id: string } | undefined;
+  let member: { id: string; user_id: string; organization_id: string; status: string; role: { slug: string }; roles?: { slug: string }[] } | undefined;
+  const calls = { creates: 0, members: 0 };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname.includes("/jwks/")) return Response.json({ keys: [publicKey] });
+    expect(new Request(String(input), init).redirect).toBe("manual");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer local-test-secret");
+    const data = init?.body ? JSON.parse(String(init.body)) : {};
+    if (url.pathname === "/authorization/roles") return Response.json({ data: [{ slug: "member" }, ...options.missingRole ? [] : [{ slug: "owner" }]] });
+    if (url.pathname.startsWith("/organizations/external_id/")) return org ? Response.json(org) : new Response(null, { status: 404 });
+    if (url.pathname === "/organizations") { calls.creates++; org = { id: "org_test", name: data.name, external_id: data.external_id }; if (options.loseCreate) { options.loseCreate = false; throw new TypeError("lost response"); } return Response.json(org); }
+    if (url.pathname === "/user_management/organization_memberships") {
+      if (init?.method === "POST") {
+        calls.members++; member = { id: "om_test", user_id: data.user_id, organization_id: data.organization_id, status: "active", role: { slug: data.role_slug } };
+        if (options.loseMembership) { options.loseMembership = false; throw new TypeError("lost response"); }
+        return Response.json(member);
+      }
+      return Response.json({ data: member ? [member] : [], list_metadata: { after: null } });
+    }
+    throw new Error("unexpected provider route");
+  });
+  return { calls, get member() { return member; } };
+}
+async function orgRequest(path = "", method = "GET", body?: unknown, claims: JWTPayload = {}, key = "fixture-operation-0001") {
+  return request("/api/organizations" + path, { method, headers: { Authorization: "Bearer " + await token(claims), "Content-Type": "application/json", "Idempotency-Key": key }, ...(body ? { body: JSON.stringify(body) } : {}) });
+}
+it("creates once across concurrent/replayed requests, persists Org DO settings and lists only mapped memberships", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  const provider = organizationProvider();
+  const results = await Promise.all([orgRequest("", "POST", { name: "Mobile workspace" }), orgRequest("", "POST", { name: "Mobile workspace" })]);
+  expect(results.some(r => r.status === 200)).toBe(true);
+  expect(provider.calls).toEqual({ creates: 1, members: 1 });
+  expect((await orgRequest("", "POST", { name: "Mobile workspace" })).status).toBe(200);
+  expect((await orgRequest("", "POST", { name: "Changed payload" })).status).toBe(409);
+  expect(await (await orgRequest()).json()).toMatchObject({ organizations: [{ organizationId: "org_test", role: "owner", name: "Mobile workspace" }], nextCursor: null });
+  expect((await orgRequest("/org_test")).status).toBe(403);
+  expect((await orgRequest("/org_test/access")).status).toBe(200);
+  const scoped = { org_id: "org_test" };
+  expect((await orgRequest("/org_test", "PATCH", { description: "Project notes", version: 1 }, scoped)).status).toBe(200);
+  expect((await orgRequest("/org_test", "PATCH", { description: "Old writer", version: 1 }, scoped)).status).toBe(409);
+  await evictDurableObject(env.ORGS.getByName("org_test"));
+  expect(await (await orgRequest("/org_test", "GET", undefined, scoped)).json()).toMatchObject({ description: "Project notes", version: 2, role: "owner" });
+  expect((await orgRequest("/org_other", "GET", undefined, { org_id: "org_other" })).status).toBe(403);
+});
+it.each(["loseCreate", "loseMembership"] as const)("reconciles %s without creating a duplicate or escalating a changed membership", async kind => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  const provider = organizationProvider({ [kind]: true });
+  expect((await orgRequest("", "POST", { name: "Recovery" })).status).toBe(503);
+  expect(await env.INSTANCE_DB.prepare("SELECT count(*) AS n FROM organization_link WHERE lifecycle='active'").first("n")).toBe(0);
+  expect((await orgRequest("", "POST", { name: "Recovery" })).status).toBe(200);
+  expect(provider.calls).toEqual({ creates: 1, members: 1 });
+});
+it("checks live membership rather than stale owner claims or administrator status, and fails closed on outages", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  const provider = organizationProvider();
+  await orgRequest("", "POST", { name: "Permission check" });
+  const staleOwner = { org_id: "org_test", role: "owner", permissions: ["*"] };
+  provider.member!.role.slug = "member";
+  expect((await orgRequest("/org_test", "GET", undefined, staleOwner)).status).toBe(200);
+  const denied = await orgRequest("/org_test", "PATCH", { description: "Forbidden", version: 1 }, staleOwner);
+  expect(denied.status).toBe(403);
+  expect(await denied.json()).toEqual({ error: { code: "ORGANIZATION_OWNER_REQUIRED" } });
+  expect(await (await orgRequest("/org_test", "GET", undefined, staleOwner)).json()).toMatchObject({ description: "", version: 1, role: "member" });
+  provider.member!.status = "inactive";
+  expect((await orgRequest("/org_test/access")).status).toBe(403);
+  expect(await (await orgRequest()).json()).toMatchObject({ organizations: [] });
+  provider.member!.status = "active"; provider.member!.role.slug = "admin";
+  expect((await orgRequest("/org_test", "GET", undefined, staleOwner)).status).toBe(403);
+  provider.member!.role.slug = "owner"; provider.member!.roles = [{ slug: "owner" }, { slug: "member" }];
+  expect((await orgRequest("/org_test", "GET", undefined, staleOwner)).status).toBe(403);
+  expect((await orgRequest("", "POST", { name: "Forbidden" }, { sub: "user_other", role: "owner" })).status).toBe(403);
+  expect(provider.calls.creates).toBe(1);
+});
+it("missing owner cannot fall back to default member and caller roles are rejected", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  const provider = organizationProvider({ missingRole: true });
+  expect((await orgRequest("", "POST", { name: "Invalid role" })).status).toBe(503);
+  expect(provider.calls).toEqual({ creates: 0, members: 0 });
+  expect((await orgRequest("", "POST", { name: "Spoof", role: "owner" })).status).toBe(400);
 });

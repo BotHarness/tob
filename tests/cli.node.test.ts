@@ -10,14 +10,15 @@ import { publicInstance, type InstanceConfig } from '../packages/contracts/insta
 let keys: Awaited<ReturnType<typeof generateKeyPair>>, jwk: Awaited<ReturnType<typeof exportJWK>>;
 const originalFetch=globalThis.fetch;
 let root: string, input: string, config: InstanceConfig, discovery: InstanceConfig, rt: Runtime, requests: {url:string;init?:RequestInit}[], prompts: unknown[], serial: number;
+let orgSelected: string | undefined;
 let refreshStatus: number, logoutStatus: number, deny: boolean, pending: string[], exchangePause: Promise<void>|undefined, badIssuer: boolean;
-const access=async(exp=300)=>new SignJWT({sub:'user_fixture',sid:'session_fixture',iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+exp,iss:badIssuer?'https://api.workos.com/':config.auth.issuer,jti:String(++serial)}).setProtectedHeader({alg:'RS256',kid:'fixture'}).sign(keys.privateKey);
+const access=async(exp=300)=>new SignJWT({sub:'user_fixture',sid:'session_fixture',iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+exp,iss:badIssuer?'https://api.workos.com/':config.auth.issuer,jti:String(++serial),...(orgSelected ? {org_id:orgSelected} : {})}).setProtectedHeader({alg:'RS256',kid:'fixture'}).sign(keys.privateKey);
 before(async()=>{keys=await generateKeyPair('RS256');jwk={...await exportJWK(keys.publicKey),kid:'fixture',alg:'RS256'};});
 after(()=>{globalThis.fetch=originalFetch;});
 beforeEach(()=>{
  root=mkdtempSync(join(realpathSync(tmpdir()),'tob-cli-test-'));input=join(root,'instance.json');
  config=publicInstance({instanceId:'test-instance',environment:'uat',server:'https://groups.example',clientId:'client_fixture',issuer:'https://api.workos.com/user_management/client_fixture',authkitDomain:'fixture.authkit.app'});
- discovery=structuredClone(config);writeFileSync(input,JSON.stringify(config));requests=[];prompts=[];serial=0;refreshStatus=200;logoutStatus=200;deny=false;pending=[];exchangePause=undefined;badIssuer=false;
+ orgSelected=undefined;discovery=structuredClone(config);writeFileSync(input,JSON.stringify(config));requests=[];prompts=[];serial=0;refreshStatus=200;logoutStatus=200;deny=false;pending=[];exchangePause=undefined;badIssuer=false;
  rt={directory:join(root,'private'),prompt:v=>prompts.push(v),wait:async()=>{}};
  globalThis.fetch=async(url,init)=>{
   const u=String(url);requests.push({url:u,init});
@@ -27,6 +28,7 @@ beforeEach(()=>{
   if(u===config.auth.tokenEndpoint){
    const form=new URLSearchParams(String(init?.body));
    if(form.get('grant_type')==='refresh_token'){
+    if(form.get('organization_id'))orgSelected=form.get('organization_id')!;
     if(exchangePause)await exchangePause;
     if(refreshStatus!==200)return Response.json({error:refreshStatus===400?'invalid_grant':'temporarily_unavailable'},{status:refreshStatus});
    }else if(deny)return Response.json({error:'access_denied'},{status:400});
@@ -72,7 +74,7 @@ test('configuration drift blocks login, refresh and bearer transmission without 
 test('reimport is idempotent; a verified replacement explicitly clears only its old session',async()=>{
  await setup();const saved=state();await execute(['instance','import',input],rt);assert.deepEqual(state(),saved);
  config.name='Renamed';writeFileSync(input,JSON.stringify(config));await execute(['instance','import',input],rt);assert.deepEqual(state(),saved);
- config.server='https://replacement.example';discovery=structuredClone(config);writeFileSync(input,JSON.stringify(config));
+ config.server='https://replacement.example';orgSelected=undefined;discovery=structuredClone(config);writeFileSync(input,JSON.stringify(config));
  await fails(execute(['instance','import',input],rt),'CONFIG_REPLACEMENT_REQUIRED');assert.deepEqual(state(),saved);
  await execute(['instance','import',input,'--replace'],rt);assert.equal(state(),undefined);
  await fails(execute(['whoami','--server','https://groups.example'],rt),'INSTANCE_NOT_IMPORTED');
@@ -112,4 +114,28 @@ test('unsafe credential stores and symlink imports are refused',async()=>{
 });
 test('validly signed wrong issuer is never sent as an instance bearer',async()=>{
  await execute(['instance','import',input],rt);badIssuer=true;await assert.rejects(command('login'));assert.equal(requests.some(r=>r.url.endsWith('/api/me')),false);
+});
+
+test('organization selection uses a separate rotated token and carries only public organization results',async()=>{
+ await setup();
+ const original=globalThis.fetch;
+ const organization={organizationId:'org_mobile',name:'Mobile project',description:'',version:1,role:'owner'};
+ const seen: unknown[]=[];
+ globalThis.fetch=async(url,init)=>{
+  const u=String(url); if(!u.includes('/api/organizations'))return original(url,init);
+  seen.push({url:u,method:init?.method});
+  if(u.endsWith('/access'))return Response.json({organizationId:organization.organizationId,role:'owner'});
+  if(u.endsWith('/org_mobile')){assert.equal(orgSelected,'org_mobile');return Response.json(organization);}
+  return Response.json({organizations:[organization],nextCursor:null});
+ };
+ const org=(...a:string[])=>execute(['org',...a,'--server',config.server],rt);
+ assert.deepEqual(await org('list'),{organizations:[organization],nextCursor:null});
+ const old=state()!.refreshToken;
+ assert.deepEqual(await org('use','--id','org_mobile'),{...organization,selected:true});
+ assert.notEqual(state()!.refreshToken,old);
+ assert.equal((await command('whoami') as {organizationId:string}).organizationId,'org_mobile');
+ assert.deepEqual(await org('show'),organization);
+ const output=JSON.stringify(seen);assert.equal(output.includes(state()!.accessToken),false);
+ globalThis.fetch=async(url,init)=>String(url).includes('/api/organizations')?Response.json({error:{code:'ORGANIZATION_OWNER_REQUIRED'}},{status:403}):original(url,init);
+ await fails(org('update','--description','denied','--version','1'),'ORGANIZATION_OWNER_REQUIRED');
 });

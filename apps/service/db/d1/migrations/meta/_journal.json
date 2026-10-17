@@ -15,6 +15,13 @@
       "when": 1792250417646,
       "tag": "0001_first_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792270853324,
+      "tag": "0002_giant_marvex",
+      "breakpoints": true
     }
   ]
 }

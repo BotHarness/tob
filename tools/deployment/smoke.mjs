@@ -16,7 +16,7 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
     };
     const health = await get('/healthz');
     assert.equal(health.status, 200);
-    assert.deepEqual(health.body, { service: 'tob', environment: 'uat', instanceId: target.instanceId, releaseSha: target.releaseSha, businessEnabled: false });
+    assert.deepEqual(health.body, { service: 'tob', environment: 'uat', instanceId: target.instanceId, releaseSha: target.releaseSha, businessEnabled: true });
     const discovery = await get('/.well-known/open-cloud-groups');
     assert.equal(discovery.status, 200);
     const expected = publicInstance({ instanceId: target.instanceId, environment: 'uat', server: target.publicBaseUrl, clientId: target.workosClientId, issuer: target.workosIssuer, authkitDomain: target.authkitDomain, mobileRedirectUri: target.mobileRedirectUri });
@@ -24,14 +24,14 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
     assert.equal((await get('/api/auth/logout', 'POST')).status, 401);
     const ready = await get('/readyz');
     assert.equal(ready.status, 200);
-    assert.deepEqual(ready.body, { ready: true, releaseSha: target.releaseSha, d1SchemaVersion: 2, orgSchemaVersion: 1, businessEnabled: false });
+    assert.deepEqual(ready.body, { ready: true, releaseSha: target.releaseSha, d1SchemaVersion: 3, orgSchemaVersion: 2, businessEnabled: true });
     const refusal = await get('/api/organizations', 'POST');
-    assert.equal(refusal.status, 503);
-    assert.equal(refusal.body.error.code, 'FEATURE_NOT_AVAILABLE');
+    assert.equal(refusal.status, 401);
+    assert.equal(refusal.body.error.code, 'UNAUTHENTICATED');
     const anonymous = await get('/api/me');
     assert.equal(anonymous.status, 401);
     assert.equal(anonymous.body.error.code, 'UNAUTHENTICATED');
-    console.log(JSON.stringify({ event: 'uat_smoke_passed', releaseSha: target.releaseSha, health: true, d1: true, orgDo: true, businessCommandsClosed: true }));
+    console.log(JSON.stringify({ event: 'uat_smoke_passed', releaseSha: target.releaseSha, health: true, d1: true, orgDo: true, anonymousOrganizationRefused: true }));
     break;
   } catch {
     if (attempt === attempts) { console.error('UAT_SMOKE_FAILED'); process.exitCode = 1; break; }
