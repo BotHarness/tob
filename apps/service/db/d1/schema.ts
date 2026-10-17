@@ -14,3 +14,13 @@ export const instanceAdmin = sqliteTable("instance_admin", {
   grantedAt: text("granted_at").notNull(),
   status: text("status", { enum: ["active", "inactive", "revoked"] }).notNull(),
 }, (t) => [check("admin_status", sql`${t.status} IN ('active', 'inactive', 'revoked')`)]);
+
+export const managementOperation = sqliteTable("management_operation", {
+  operationId: text("operation_id").primaryKey(),
+  actorId: text("actor_id").notNull(),
+  kind: text("kind").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  targetId: text("target_id").notNull(),
+  state: text("state").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});

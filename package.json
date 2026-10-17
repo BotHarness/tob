@@ -18,15 +18,16 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",
-    "hono": "4.13.13"
+    "hono": "4.13.13",
+    "jose": "6.2.12"
   },
   "devDependencies": {
-    "cf": "1.0.0-beta.18",
-    "wrangler": "4.151.1",
-    "typescript": "7.0.2",
-    "drizzle-kit": "0.31.11",
-    "vitest": "5.0.5",
     "@cloudflare/vitest-plugin": "1.4.4",
-    "@types/node": "24.10.1"
+    "@types/node": "24.10.1",
+    "cf": "1.0.0-beta.18",
+    "drizzle-kit": "0.31.11",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5",
+    "wrangler": "4.151.1"
   }
 }

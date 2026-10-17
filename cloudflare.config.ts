@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => {
       env: {
         INSTANCE_DB: bindings.d1({ id: target.databaseId }),
         ORGS: bindings.durableObject({ worker: owner, exportName: "Org" }),
+        WORKOS_CLIENT_ID: bindings.json(target.workosClientId),
+        WORKOS_ISSUER: bindings.json(target.workosIssuer),
+        WORKOS_ENVIRONMENT_ID: bindings.json(target.workosEnvironmentId),
         INSTANCE_ID: bindings.json(target.instanceId),
         DEPLOYMENT_ENV: bindings.json(target.environment),
         RELEASE_SHA: bindings.json(target.releaseSha),
