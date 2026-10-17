@@ -22,6 +22,13 @@
       "when": 1792270853324,
       "tag": "0002_giant_marvex",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792274107729,
+      "tag": "0003_aspiring_moondragon",
+      "breakpoints": true
     }
   ]
 }

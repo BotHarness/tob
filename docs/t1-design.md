@@ -418,3 +418,9 @@ Agent 可作为群主/管理员是已确认方向，放到 T1–T5 之后的群�
 ## T1 mobile session increment — 2026-10-18
 
 The bounded UAT mobile path, deployment callback opt-in, public QR export and explicit native acceptance gates are recorded in [T1 mobile session](t1-mobile-session.md). Mobile sign-in is independent of Host pairing. This source increment does not complete T1 or authorize Prod.
+
+## Active next slice: ordinary users and multiple workspaces
+
+The expanded [multi-user collaboration contract](multi-user-collaboration.md) replaces the previous restriction that every application user must be the initialized administrator. Bootstrap is unchanged; a protected UAT operator change enables normal verified WorkOS users. First application sign-in invokes idempotent default-workspace provisioning. Additional organization creation remains independently configurable. CLI `onboard` and mobile session check retry setup with the existing session. Registration, instance administration and organization ownership remain separate permissions.
+
+Acceptance: two ordinary synthetic UAT accounts receive distinct default workspaces; repeated/concurrent setup creates no duplicates; A creates/selects another workspace; B cannot list/read A's workspaces even with a claimed org ID. No administrator grant is created. Native evidence, public API/CLI evidence and browser authentication evidence remain distinct. Invitations and channel/Agent work are subsequent slices, not completed by this change.
