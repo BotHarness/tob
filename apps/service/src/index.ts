@@ -25,12 +25,22 @@ const api = app
     catch (error) { return c.json({ error: { code: error instanceof AuthenticationError ? "UNAUTHENTICATED" : "IDENTITY_UNAVAILABLE" } }, error instanceof AuthenticationError ? 401 : 503); }
     // Own-session cleanup is available even after business access is withdrawn.
     // Ignore request body/user IDs: only the verified token can select a session.
-    if (!c.env.WORKOS_API_KEY) return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);
+    if (!c.env.WORKOS_API_KEY) {
+      console.error(JSON.stringify({ event: "session_logout_unconfirmed", phase: "secret_binding" }));
+      return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);
+    }
     try {
       const response = await fetch("https://api.workos.com/user_management/sessions/revoke", { method: "POST", headers: { Authorization: `Bearer ${c.env.WORKOS_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ session_id: identity.sessionId }), redirect: "error", signal: AbortSignal.timeout(10000) });
-      if (!response.ok) return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);
+      if (!response.ok) {
+        console.error(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_response", status: response.status }));
+        return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);
+      }
       return c.json({ remoteRevoked: true });
-    } catch { return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503); }
+    } catch (error) {
+      const kind = error instanceof Error && ["TypeError", "TimeoutError", "AbortError"].includes(error.name) ? error.name : "unknown";
+      console.error(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_transport", kind }));
+      return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);
+    }
   })
   .get("/healthz", (c) => c.json({ service: "tob", environment: c.env.DEPLOYMENT_ENV, instanceId: c.env.INSTANCE_ID, releaseSha: c.env.RELEASE_SHA, businessEnabled: false }))
   .get("/readyz", async (c) => {
