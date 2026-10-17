@@ -8,7 +8,7 @@ try {
   const mode = process.argv[3];
   if (!['login', 'me'].includes(mode)) throw new Error('USAGE');
   const target = profile.json('uat-target.json');
-  if (!/^client_[A-Za-z0-9]+$/.test(target.WORKOS_CLIENT_ID) || target.WORKOS_ISSUER !== 'https://api.workos.com/') throw new Error('INVALID_TRUSTED_CONFIG');
+  if (!/^client_[A-Za-z0-9]+$/.test(target.WORKOS_CLIENT_ID) || target.WORKOS_ISSUER !== `https://api.workos.com/user_management/${target.WORKOS_CLIENT_ID}`) throw new Error('INVALID_TRUSTED_CONFIG');
   const server = new URL(target.PUBLIC_BASE_URL);
   if (server.protocol !== 'https:' || server.origin !== target.PUBLIC_BASE_URL) throw new Error('INVALID_SERVER');
   const authHost = new URL('https://' + target.WORKOS_AUTH_DOMAIN);
@@ -38,7 +38,9 @@ try {
     }
     if (!session) throw new Error('DEVICE_AUTH_TIMEOUT');
     phase = 'verify-and-save-session';
-    await verifyHumanToken('Bearer ' + session.access_token, target.WORKOS_CLIENT_ID, target.WORKOS_ISSUER);
+    // Save only to the private local file before checking: failed validation can
+    // be diagnosed/revoked without asking the Human to issue another session.
+    // This file is never authority: every use verifies the signed token.
     // New login never silently overwrites a previous session.
     profile.createJson('uat-login-session.json', { clientId: target.WORKOS_CLIENT_ID, server: server.origin, accessToken: session.access_token, refreshToken: session.refresh_token });
   } else {
@@ -51,4 +53,4 @@ try {
   const r = await fetch(new URL('/api/me', server), { headers: { Authorization: 'Bearer ' + session.access_token }, redirect: 'error', signal: AbortSignal.timeout(10000) });
   const body = await r.json();
   console.log(JSON.stringify({ event: 'uat_identity_probe', status: r.status, identityMatches: body.userId === identity.userId, instanceMatches: body.instanceId === target.INSTANCE_ID, role: body.instanceRole, errorCode: body.error?.code }));
-} catch { console.error(JSON.stringify({ event: 'uat_login_check_failed', phase })); process.exitCode = 1; }
+} catch (error) { console.error(JSON.stringify({ event: 'uat_login_check_failed', phase, code: error?.cause?.code ?? error?.code ?? error?.name, claim: error?.cause?.claim })); process.exitCode = 1; }

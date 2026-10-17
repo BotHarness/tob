@@ -15,6 +15,12 @@ execFileSync('git', ['diff', '--exit-code', 'HEAD'], { stdio: 'pipe' });
 const cf = './node_modules/.bin/cf';
 function read(args) { return JSON.parse(execFileSync(cf, [...args, '--mode', 'uat'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })); }
 try {
+  // Independently confirm the configured issuer and key source before mutations.
+  const discoveryResponse = await fetch(`https://api.workos.com/user_management/${target.workosClientId}/.well-known/openid-configuration`, { redirect: 'error', signal: AbortSignal.timeout(10000) });
+  assert.ok(discoveryResponse.ok, 'WORKOS_DISCOVERY_FAILED');
+  const discovery = await discoveryResponse.json();
+  assert.equal(discovery.issuer, target.workosIssuer, 'WORKOS_ISSUER_MISMATCH');
+  assert.equal(discovery.jwks_uri, `https://api.workos.com/sso/jwks/${target.workosClientId}`, 'WORKOS_JWKS_MISMATCH');
   const account = read(['accounts', 'get']);
   assert.equal(account.id, target.accountId, 'ACCOUNT_MISMATCH');
   const db = read(['d1', 'get', target.databaseId]);
