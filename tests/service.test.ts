@@ -150,7 +150,20 @@ it("logout revokes only the signed current session, even without business admiss
 });
 
 it("logout provider failure is never reported as revoked", async () => {
+  const logs = vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(globalThis, "fetch").mockImplementation(async url => String(url).includes("/jwks/") ? Response.json({ keys: [publicKey] }) : new Response(null, { status: 503 }));
   const r = await request("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + await token() } });
   expect(r.status).toBe(503); expect(await r.json()).toEqual({ error: { code: "LOGOUT_UNCONFIRMED" } });
+  expect(logs).toHaveBeenCalledWith(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_response", status: 503 }));
+});
+
+it("logout transport diagnostics exclude exception messages and credentials", async () => {
+  const logs = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(globalThis, "fetch").mockImplementation(async url => {
+    if (String(url).includes("/jwks/")) return Response.json({ keys: [publicKey] });
+    throw new TypeError("sensitive upstream text");
+  });
+  const r = await request("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + await token() } });
+  expect(r.status).toBe(503);
+  expect(logs).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_transport", kind: "TypeError" }));
 });
