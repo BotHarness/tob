@@ -16,9 +16,11 @@ From the repository root, run this in your own interactive terminal:
 bash scripts/prepare-first-deploy.sh tob-staging
 ```
 
-The four stages show account links, record your intended Staging target, accept a WorkOS environment API key through hidden input, and summarize the handoff to a deployment agent. **URLs are printed as text; the wizard never opens a browser or makes network requests.**
+The four stages show account links, record the Cloudflare Account ID and intended WorkOS Staging target, accept a WorkOS environment API key through hidden input, and summarize the handoff to a deployment agent. **URLs are printed as text; the wizard never opens a browser or makes network requests.**
 
-Target hints and secrets are saved separately under `~/.config/tob/first-deploy/<profile>/`, outside Git, with restricted permissions. Reruns reuse saved values; a different target needs a new profile. Share only file paths with an agent on the same machine, never paste secret contents into chat.
+The wizard explains how to copy the Account ID using **Cmd/Ctrl+K → Copy account ID** in the Cloudflare dashboard, with a URL example. ID format alone does not verify account ownership or access.
+
+Target identifiers and hints are saved separately from secrets under `~/.config/tob/first-deploy/<profile>/`, outside Git, with restricted permissions. Reruns reuse saved values; a different target needs a new profile. Share only file paths with an agent on the same machine, never paste secret contents into chat.
 
 **Completion means local human preparation only.** It does not verify provider authorization, resource IDs, key validity, or deploy anything. The secret file still lacks the Webhook secret. Webhook creation, Worker Secrets injection, deployment, and runtime verification remain future T1 work; no cloud actions run automatically when the wizard finishes.
 

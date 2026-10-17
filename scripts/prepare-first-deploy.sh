@@ -229,7 +229,8 @@ done
 ENV_FILE="$TOB_TARGET_FILE"
 # Never attach a saved secret to a new target after its target record was lost.
 if [[ -s "$TOB_SECRET_FILE" ]]; then
-  for TOB_FIELD in CLOUDFLARE_ACCOUNT_HINT WORKOS_TEAM_HINT WORKOS_PROJECT_HINT WORKOS_ENVIRONMENT; do
+  [[ -n "$(_existing CLOUDFLARE_ACCOUNT_ID || true)" || -n "$(_existing CLOUDFLARE_ACCOUNT_HINT || true)" ]] || fail 'A secret file exists without a Cloudflare target record. Stop and reconcile the original target.'
+  for TOB_FIELD in WORKOS_TEAM_HINT WORKOS_PROJECT_HINT WORKOS_ENVIRONMENT; do
     [[ -n "$(_existing "$TOB_FIELD" || true)" ]] || fail 'A secret file exists without a complete target record. Stop and reconcile the original target; do not reuse it for a new environment.'
   done
 fi
@@ -259,6 +260,10 @@ capture_target() {
   ask "$field" "$prompt"
   value="${!field}"
   [[ -n "$value" && ${#value} -le 160 && ! "$value" =~ [[:cntrl:]] ]] || fail 'Target name is required (up to 160 characters, no control characters).'
+  if [[ "$field" == CLOUDFLARE_ACCOUNT_ID ]]; then
+    [[ "$value" =~ ^[0-9a-fA-F]{32}$ ]] || fail 'Account ID must be exactly 32 hexadecimal characters. Use Copy account ID; do not enter a name, email, Zone ID, API token, or the full URL. Nothing was saved for this field.'
+    value=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')
+  fi
   if [[ -n "$saved" && "$saved" != "$value" ]]; then
     fail 'This profile already belongs to another target. Rerun with a new profile name; existing files are unchanged for this field.'
   fi
@@ -278,10 +283,23 @@ note 'CLI / MCP 的 OAuth 授权由部署 Agent 在后续需要时发起；网�
 confirm '账号已准备好，可以记录本次部署目标？' || exit 0
 
 stage '确认目标：只记录你的选择'
-say '步骤 2/4：填写控制台中看到的名称；真实资源 ID 由部署 Agent 独立查询核验。'
+say '步骤 2/4：复制 Cloudflare Account ID，再填写 WorkOS Team / Project 名称。'
 say "本机资料夹：$TOB_PRIVATE_DIR"
 note '当前只准备 Staging。重跑可按 Enter 保留；换账号或环境请使用新 profile。'
-capture_target CLOUDFLARE_ACCOUNT_HINT 'Cloudflare 目标账号名称：'
+show_url 'Cloudflare 控制台：https://dash.cloudflare.com/'
+step '先选中要部署的账号，按 Cmd+K（Windows/Linux 为 Ctrl+K），搜索 Copy account ID 并复制。'
+step '也可在 Workers & Pages → Account Details → Account ID 旁点击复制。'
+note '账号页面 URL 通常形如 https://dash.cloudflare.com/<ACCOUNT_ID>/...；这里只填写该段 ID。'
+note 'Account ID 是 32 位十六进制字符，不是邮箱、账号名称、Zone ID 或 API token。'
+show_url '官方查找说明：https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/'
+TOB_LEGACY_CF_HINT=$(_existing CLOUDFLARE_ACCOUNT_HINT || true)
+TOB_SAVED_CF_ID=$(_existing CLOUDFLARE_ACCOUNT_ID || true)
+if [[ -n "$TOB_LEGACY_CF_HINT" && -z "$TOB_SAVED_CF_ID" ]]; then
+  say "旧版已记录的账号名称：$TOB_LEGACY_CF_HINT"
+  note '本次仅补充这个已有账号的 ID，旧名称与秘密都会保留；不能借此切换账号。'
+  confirm '已在控制台选中旧记录对应的账号，继续复制它的 Account ID？' || exit 0
+fi
+capture_target CLOUDFLARE_ACCOUNT_ID 'Cloudflare Account ID（32 位）：'
 capture_target WORKOS_TEAM_HINT 'WorkOS Team 名称：'
 capture_target WORKOS_PROJECT_HINT 'WorkOS Project 名称（本项目通常为 TOB）：'
 ENV_FILE="$TOB_TARGET_FILE"
@@ -289,7 +307,7 @@ TOB_SAVED_ENV=$(_existing WORKOS_ENVIRONMENT || true)
 [[ -z "$TOB_SAVED_ENV" || "$TOB_SAVED_ENV" == staging ]] || fail 'This profile is not a staging profile; use a new profile name.'
 persist WORKOS_ENVIRONMENT staging
 persist PREPARATION_STATUS incomplete
-note '这些名称是部署意图，不是已核验的连接配置；没有授予实例管理员或组织权限。'
+note 'ID 与名称仍是待核验的部署目标；格式检查不能区分 Account ID 与 Zone ID，也不证明归属或权限。'
 confirm '上述目标就是本次要使用的账号、项目和 Staging 环境？' || exit 0
 
 stage 'WorkOS API key：只在此终端隐藏输入'

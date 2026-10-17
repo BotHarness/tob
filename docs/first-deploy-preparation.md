@@ -23,13 +23,25 @@ bash scripts/prepare-first-deploy.sh --help
 | 步骤 | Human 操作 | 本机输出 |
 | --- | --- | --- |
 | 1. 账号准备 | 点击文本中的 Cloudflare / WorkOS URL，自行注册或登录 | 无；不收集登录凭证，也不宣称 CLI/MCP 已授权 |
-| 2. 确认目标 | 输入 Cloudflare 账号、WorkOS Team / Project 名称，确认 Staging | `deployment.env`：三个目标名称、固定 staging 和准备状态；真实 ID 留给 Agent 查询 |
+| 2. 确认目标 | 复制 Cloudflare Account ID，填写 WorkOS Team / Project 名称，确认 Staging | `deployment.env`：CLOUDFLARE_ACCOUNT_ID、两个 WorkOS 名称、固定 staging 和准备状态；归属/权限仍待 Agent 核验 |
 | 3. 安全交付 API key | 在 WorkOS 目标环境的 API Keys 页面取得环境 key，在终端隐藏输入 | `secrets.env`：仅 `WORKOS_API_KEY`；不包含 Webhook secret |
 | 4. 交接 | 将两个文件路径交给同机部署 Agent | 输出后续步骤；不自动启动尚未实现的部署逻辑 |
 
 固定保存位置：`~/.config/tob/first-deploy/<profile>/`。目录权限 0700、文件 0600；脚本拒绝符号链接和 Git 仓库内存储。公开目标与秘密分文件保存，不创建或覆盖项目 `.env`，不将文件作为 shell 脚本 source。
 
-保存状态 `inputs_saved_unverified` 只表示本机输入完整。名称不证明控制面归属，API key 格式检查不证明有效性；待后续工具核对明确的 account / environment / application ID。`secrets.env` 尚不完整，不直接用于部署。
+保存状态 `inputs_saved_unverified` 只表示本机输入完整。Account ID 格式和 WorkOS 名称不证明控制面归属，API key 格式检查不证明有效性；待后续工具核对明确的 account / environment / application ID。`secrets.env` 尚不完整，不直接用于部署。
+
+## Cloudflare Account ID 从哪里找
+
+1. 点击 https://dash.cloudflare.com/ 并选择要部署的账号。
+2. 按 `⌘K`（Windows/Linux 为 `Ctrl+K`），搜索 **Copy account ID** 并复制；也可到 **Workers & Pages → Account Details → Account ID** 复制。
+3. 在向导中粘贴 32 位 Account ID。账号页面 URL 通常为 `https://dash.cloudflare.com/<ACCOUNT_ID>/...`，只复制 ID 段，不粘贴整个 URL。
+
+这里不填邮箱、账号名称、Zone ID 或 API token。向导只验证 32 位十六进制格式并统一为小写；Zone ID 也可能符合该格式，仍须后续已授权控制面核验账号归属与权限，不能因格式通过就部署。
+
+旧版 profile 只有 CLOUDFLARE_ACCOUNT_HINT 时，会显示旧名称并要求确认仍为同一账号，再补充 ID；不自动把名称转换成 ID，也不修改已有秘密。已保存 ID 不允许换绑；改目标使用新 profile。
+
+依据：[Cloudflare 官方查找说明](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)。
 
 ## 中断重跑
 
