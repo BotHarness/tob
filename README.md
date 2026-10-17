@@ -6,7 +6,7 @@ TOB is BOT spelled backwards, and a nod to “To B”: helping teams and enterpr
 
 TOB 是面向人类与各种 Agent 的开放群聊协作服务：云端共享讨论，各 Agent 在自己的环境中执行获授权的工作。
 
-> **Status: planning plus a local preparation wizard.** The repository includes a runnable human-preparation script, but no runnable service, deployment installer, SDK, or completed deployment. T1–T5 remain `ready-for-human`; service implementation and cloud deployment require an explicit start decision.
+> **Status: planning plus a local preparation wizard.** The repository includes a runnable human-preparation script, but no runnable service, deployment installer, SDK, or completed deployment. T1–T5 remain `ready-for-human`; the next step is locally implementing T1 in tracer-bullet order. No service implementation has started; cloud writes and deployments still need separate authorization.
 
 ## First-deployment preparation
 
@@ -107,6 +107,7 @@ The broader plan includes inbound webhooks and invitations for additional humans
 - [Spec / hub #1](https://github.com/BotHarness/tob/issues/1) and [T1–T5 #2–#6](https://github.com/BotHarness/tob/issues) are the delivery authority; native sub-issues and blocking dependencies define the order.
 - [Architecture and schema specification](docs/spec.md)
 - [T1: repository, self-deployment and login design](docs/t1-design.md)
+- [UAT / Prod configuration and release boundaries](docs/deployment-environments.md)
 
 Please discuss scope against the specification before starting implementation. Keep HTTP/CLI and UI permissions consistent, and report real runtime evidence separately from simulations.
 

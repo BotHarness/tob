@@ -72,7 +72,7 @@ bash scripts/prepare-first-deploy.sh --help
 
 ## 校验边界
 
-仅进行 Bash 语法与静态检查；技能模板 STAGES 之前保持逐字一致，四步均不调用 `open_url`。未运行交互全流程，未输入真实密钥，未验证云端授权或部署。机器当前未安装 shellcheck，未执行该检查。
+脚本交付时完成 Bash 语法、静态检查与 Bash 3.2 提示文字回归。随后 Human 报告完成真实向导，Agent 只读核验了保存权限、Cloudflare 账号访问、WorkOS 目标和 key 可用性；key 环境归属仅为使用记录关联证据。完整交互观察、中断/异常分支及云部署仍未验证，shellcheck 未执行。详见 [T1 追加只读核验](t1-design.md#追加只读核验2026-10-17)。
 
 本向导是独立交付的人工准备工具。T1–T5 保持 ready-for-human；此脚本发布不授权自动部署、服务实现或任何云配置写入。
 
@@ -85,3 +85,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 该回归覆盖默认 locale / C locale 下的路径显示，并检查自定义步骤中变量与非 ASCII 标点的边界。它不代表完整交互流程或云端部署验证通过。若旧版在显示秘密文件路径时中断，普通退出会释放准备锁；直接用同一 profile 重跑即可，先前保存的目标值可按 Enter 保留。
+
+## UAT / Prod
+
+未来部署使用 GitHub `uat` / `production` Environments，公开配置放 Variables，凭证放各环境 Secrets；参见 [部署约定](deployment-environments.md)。当前向导仍仅准备 WorkOS Staging；profile 名称不决定环境类型，不能将现有文件重命名为 production 后复用。Prod 输入支持尚未实现，本轮不修改向导或上传任何秘密。

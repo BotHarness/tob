@@ -93,7 +93,7 @@ WorkOS OAuth 设置不假定能靠我们的环境变量自动创建：Google 后
 
 中断后同 profile 重跑：普通字段显示已保存值，Enter 保留并继续；API key 只提示已保存，Enter 复用，无需 y 或再次粘贴，不同 key 输入被拒绝。相同值不重复写入，不替换/轮换 key；已保存目标字段不可改绑，换目标用新 profile。秘密存在而目标记录不完整则停止。脚本拒绝符号链接、Git 仓库内秘密存储及非交互输入，避免两个同 profile 进程同时写入；意外强制终止遗留锁需先确认旧进程已退出再处理。
 
-本次发布证据限于 Bash 语法、--help、非交互拒绝及静态检查（模板库不变、四步、不调用开网页/云写入）。 另已增加并验证 Stage 3 路径提示的 Bash 3.2 回归：使用假路径与公开测试标识，覆盖默认/C locale 和非 ASCII 标点变量边界，不访问秘密。未运行完整交互或真实 key 流程；shellcheck 当前未安装。后续需分别验证隐藏输入/文件权限/中断重跑、工具授权与实际目标、API key 可用性、Webhook 签名秘密交接、Worker 注入及真实部署。向导结束不关闭“秘密与 Cloudflare 交接”缺口，不释放 T2。
+本次发布证据限于 Bash 语法、--help、非交互拒绝及静态检查（模板库不变、四步、不调用开网页/云写入）。 另已增加并验证 Stage 3 路径提示的 Bash 3.2 回归：使用假路径与公开测试标识，覆盖默认/C locale 和非 ASCII 标点变量边界，不访问秘密。随后 Human 报告向导已完成，Agent 只读验证保存权限、目标账号/环境及 API key 可用性，归属证据等级见追加核验表；未由 Agent 观察完整交互，也未验证全部中断/异常分支。shellcheck 当前未安装。Webhook 签名秘密交接、Worker 注入及真实部署仍待验证。向导结束不关闭“秘密与 Cloudflare 交接”缺口，不释放 T2。
 
 ### 人与 Agent 的分工
 
@@ -185,12 +185,47 @@ flowchart TB
 
 部署工具以实时发现的操作合同为准，不硬编码旧源码快照中的 userlandSettings/updateUserlandSettings 名称；当前为 authkitSettings/updateAuthkitSettings。更新仅提交必要字段，不能把完整读取对象原样写回：例如 isEmailVerificationRequired 可读不意味着可写，其写入受账户能力限制。未实测的写权限保留待验证。
 
+### 追加只读核验：2026-10-17
+
+本轮由 Human 完成人工准备后，Agent 在本机受保护进程读取保存的输入，执行官方 API GET 与 MCP 查询；未创建资源、发信、修改云配置或部署。秘密未进入命令参数、输出或公开文档。原始账号/资源 ID 留在本机，公开结果如下。
+
+| 项目 | 实际观察 | 可以证明 / 不能证明 |
+| --- | --- | --- |
+| 本机保存 | profile 目录 0700；deployment.env / secrets.env 为当前用户所有、0600；未发现重复键，秘密文件仅含预期 API key 字段 | 已验证该次保存与文件权限；Human 报告向导完成，不等于 Agent 观察了完整隐藏输入、中断恢复和全部异常分支 |
+| Cloudflare 账号 | cf 1.0.0-beta.5 的 auth login 检测到已有登录，复用授权；accounts get 成功，返回 ID 与保存目标一致 | 已验证当前凭证能读取目标账号；本轮未发生新的 OAuth 授权，未验证部署/Secrets/D1/DO 写权限，也不代表 CI 已有凭证 |
+| WorkOS 目标 | MCP 按保存的 environment_id 查询，返回 TOB / Staging、sandbox=true；默认 application 的 environmentId 与 Client ID 一致 | 已验证目标及应用映射；不使用 MCP 默认上下文或仅凭 Staging 名称选择环境 |
+| key 有效性 | 本机读取 WORKOS_API_KEY，仅发往 api.workos.com；GET /user_management/users?limit=1 返回 HTTP 200，用户列表为空 | 已验证该 key 可读取用户列表；空列表或 HTTP 200 本身不能证明环境归属，也不证明写权限 |
+| key 环境归属 | 请求窗口为 14:34:06.214–14:34:06.749 UTC；随后 TOB Staging 内名为 Tob 的 key 的 lastUsedAt 从 14:31:54.106 更新为 14:34:06.729 UTC；其 applicationId 指向上述已核验应用 | **使用记录关联证据**：时间落在本次请求窗口且应用/环境映射吻合；不是 API 直接返回凭证归属，不是密钥全文比对，也不保证并发使用时可以唯一归因 |
+
+仍未核验 Worker Secrets 注入、Webhook 签名秘密、云写权限及真实登录/部署。上述关联证据保留原等级，不改写为“归属直接证明”；将来有并发调用、时间未更新或映射不明确时应报告无法确认，不能靠空数据/名称推断。本轮不重查此前所有注册/角色开关，前表仍是此前时间点的观察。
+
+本机 PREPARATION_STATUS 仍为 inputs_saved_unverified：它是离线向导的产物状态，不被这次人工只读核验改写为部署就绪。更换 key、WorkOS 环境/application、Cloudflare 账号或 CI 凭证后需重新核验，不能直接沿用本机这份证据。官方说明确认环境 key 的请求按所属环境隔离，但未提供此次响应中的直接环境证明：[API authentication](https://workos.com/docs/reference/api-authentication)。
+
+### UAT / Prod 部署合同
+
+采用两个 GitHub Environments：`uat` 与 `production`（界面可称 Prod），同名 Secrets/Variables 按环境隔离；本地开发不等于第三套共享云环境。UAT 计划使用已核验的 TOB WorkOS Staging，Prod 必须独立使用 Production；Cloudflare Worker、D1、DO namespace、实例 ID/origin、Webhook 与运行秘密各自独立。当前尚未创建或配置两条部署流水线及 GitHub Secrets。
+
+先本地推进 T1，再经放行验证 UAT；Prod 仅晋级已通过 UAT/Human QA 的确切 commit，不随文档/main 推送自动发布。自部署可只启用一套环境，不要求购买/启用生产才能开发。配置字段、凭证交接、发布与拒绝条件见 [UAT / Prod 部署约定](https://github.com/BotHarness/tob/blob/main/docs/deployment-environments.md)。
+
+### 本地开始与远端放行的区别
+
+Human 已同意下一步在本地按 T1 → T2 → T3 → T4 → T5 推进；本轮仍只更新方案和验收，未开始服务实现。五项缺口是 T1 的交付门槛，不要求先完成所有云端写入才能开始本地代码。
+
+| 何时解决 | 剩余事项 |
+| --- | --- |
+| 本地首个可运行增量内 | 锁定 Hono/Drizzle/cf 与 WorkOS 客户端版本；证明 D1/SQLite DO 驱动、迁移及原子初始化可运行；通过同一公开 HTTP 路径验证未初始化拒绝 → 受控 fixture 管理员 → 建组织/CLI 读回。fixture 明确标记，不充当真实 WorkOS 登录；不做独立横向基础票 |
+| 首次真实 UAT 集成前 | 固定 UAT origin、退出返回 URI、移动回调及 WorkOS 映射；准备并核验环境级 CI 凭证和写权限；确认安全取得 Webhook signing secret / 注入 Worker Secrets 的实际工具合同。写操作、发邀请与部署届时单独放行，当前不执行 |
+| T1 UAT 验收内 | WorkOS 注册/角色/回调写后读回及重跑；本人接受邀请、实际 user_id 核验和管理员原子绑定；可信配置扫码/文件导入；真实手机 PKCE、CLI device flow、刷新/切组织/退出/撤权、事件补漏和失败恢复 |
+| 首次 Prod 发布前 | 独立 Production WorkOS 与 Cloudflare 资源、生产凭证/环境保护、供应商必要开通；同一候选 commit 的 UAT 证据、生产显式放行及可执行恢复方案。Prod 未开通不阻塞本地 T1 和 UAT 验收 |
+
+本地增量是 T1 的内部验证步骤，不是已完成 tracer bullet；T1 仍须手机与 CLI 真实闭环及 Human QA 才能释放 T2。首次增量不扩展 Agent 群主或群消息层。暂不改变 ready-for-human 标签或关闭任务；实际领取本地实现时再记录开始状态，不将该标签解释成已经部署。
+
 ### T1 剩余五项缺口与完成门槛
 
 1. **配置执行与重跑。** 锁定正确项目/环境/application；关闭 signup，明确创建 owner，保持 member 默认和单角色；登记精确回调并确定退出返回地址。写后读回、重复执行不重复创建且不覆盖无关配置；未知角色不获得权限，已有内置 admin 无需删除。注册/角色/回调已有自动化接口，不再默认归为人工步骤。
 2. **首个应用用户到管理员（方案已确认，运行验收待完成）。** 关闭注册并读回后发送无组织邀请；本人接受后按 invitation_id 读取 accepted_user_id，再核验同一环境实际用户的目标邮箱、email_verified 与可用状态。部署者 Cloudflare 管理权限下，以同一 D1 原子操作绑定 active instance_admin 和固定首次初始化回执。重试先读权威状态；不重复发信、不覆盖其他用户、不恢复已撤销管理员。邀请返回与正常手机/CLI 登录分开；详见 T1 §4。邀请接受、真实用户核验、原子写入与中断/并发恢复尚未运行验证。
 3. **可信配置导入（方案已确认，运行验收待完成）。** 部署 Agent 从两个已认证控制面核验后，输出 tob-instance.json 及承载同一配置全文的本地二维码；手机从可信部署电脑扫码，CLI 读取文件，共用校验和 discovery 比对。关键配置变化后停止联网操作，重新核验、导出、导入并登录；具体流程见 T1 §5–6。设计确认不等于导入、扫码或重新核验已实现，不以预置配置替代验收。
-4. **秘密与 Cloudflare 交接（人工准备脚本已交付，运行交接待完成）。** 向导仅采集本机 API key 与目标意图，不核验 key 或注入 Worker。后续受保护取得运行 API key/Webhook secret 并注入 Worker Secrets；记录资源 ID，区分 D1 SQL、DO namespace 生命周期和每个 Org DO 的迁移；配置事件端点 / Cron 并处理中断重跑。初始化前业务关闭，未确认资源不得盲目重建。此次未验证此路径，MCP key metadata 不等于已取得运行秘密。
+4. **秘密与 Cloudflare 交接（本机准备和部分只读核验已完成，运行交接待完成）。** 向导仅采集本机 API key 与目标意图，不核验 key 或注入 Worker。后续受保护取得运行 API key/Webhook secret 并注入 Worker Secrets；记录资源 ID，区分 D1 SQL、DO namespace 生命周期和每个 Org DO 的迁移；配置事件端点 / Cron 并处理中断重跑。初始化前业务关闭，未确认资源不得盲目重建。本机权限、Cloudflare 账号读取和 WorkOS key 可用性已有证据，key 归属仅有使用记录关联；CI 凭证、写权限、Webhook secret、Worker 注入和 UAT 部署均未验证。MCP key metadata 本身不能代替运行秘密交付。
 5. **完整运行验收。** 手机登录并建组织 → CLI 独立登录看到同一组织 → 刷新、组织切换、退出与撤权；真实事件签名、补漏/重试、WorkOS/D1/Org DO 中途失败恢复和 Human QA 均须有证据。管理端读取、dry-run、fixture 都不能替代。
 
 五项保留在 T1 内，不另拆横向基础票，不提前启动 T2–T5。必要人工仍是注册、目标/授权选择、OAuth/MFA、首次应用用户认证、产品登录确认和 Human QA；初始秘密交付自动化未证实、团队限制或生产 billing 才属于条件人工。全部实现验收仍未完成。
@@ -330,14 +365,18 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 
 一次现场验收应能完成：新环境部署并初始化 → 无 Host 手机选择已核验实例 → 系统浏览器登录回 App → 创建组织 → CLI 独立登录看到同一组织 → 两边刷新/重启 → 切换第二个测试组织 → 退出一端不退出另一端 → 删除成员/撤销会话后请求被拒绝。
 
-附带验收条件（全部仍待完整运行验证；管理端证据及准备脚本静态检查不代表交付完成）：
+附带验收条件（全部仍待完整运行验证；管理端、关联证据和准备脚本检查不代表交付完成）：
+
+- 只读核验分别记录本机权限、Cloudflare 目标账号读取、WorkOS 环境/application 映射、key 的 HTTP 200 及使用记录关联证据；不把它们升级为写权限、CI 就绪或完整部署证明。换 key/目标/CI 凭证重新核验；无法唯一关联时明确待确认，不输出秘密。
+- UAT / Prod 使用独立环境配置与 GitHub Environment 凭证；变量缺失、环境/WorkOS 类型或资源映射不符即在任何云写入前拒绝，不回退其他环境。PR/fork 检查不使用部署秘密；Prod 只晋级经 UAT/Human QA 的确切 commit，并验证实际环境保护。
+- 部署按目标串行，迁移途中不因新提交自动取消；重复运行先读回资源/版本/迁移状态，部署后核对实际版本和目标。代码回退不能声称自动回退 D1/DO 数据；未完成恢复检查不可标记发布可恢复。
 
 - 验证重跑默认值：普通字段显示已有值并支持 Enter；API key 内容隐藏，Enter 直接复用，不出现额外 y/N 提示；相同值不重复写文件，输入不同 key 不覆盖旧秘密。账号/目标选择的确认不被跳过。
 - 验证 WorkOS Environment ID 输入：可从环境 Dashboard URL 找到 environment_…；名称、其他 ID 前缀与完整 URL 均拒绝，不改写有效 ID 大小写；同 profile 换 ID 拒绝。旧 Team / Project 名称经明确确认原 Staging 后补 ID；格式及本机 staging 标记不替代环境类型/归属/权限核验。
 - 验证 Cloudflare Account ID 输入：查找路径与 URL 示例清楚，非法格式和完整 URL 不写入目标字段；有效 ID 规范为小写，已保存 ID 不可改绑；旧名称 profile 需明确确认同一账号后补 ID并保留秘密。格式检查不作为控制面核验成功。
 - 人工准备向导在交互终端完成四步，URL 只打印且不会自动开浏览器或执行网络/云动作；输入不包含供应商账号密码、OAuth token 或 Cloudflare 部署凭证。
-- 目标选择和 API key 分开保存在仓库外受限文件；密钥隐藏输入、不回显或进入日志/参数/公共配置；同 profile 中断重跑可复用，换目标拒绝复用旧 key，目标记录缺失时停止。真实交互与文件权限检查仍待完成。
-- 向导保存 inputs_saved_unverified 状态，并在末尾明确提示尚未核验或部署；没有 Webhook secret，不执行部署。独立报告“本机准备工具已交付”与“授权/凭证/部署尚未验证”，不得把向导退出码或 README 示例当作 T1 完成。
+- 目标选择和 API key 分开保存在仓库外受限文件；密钥隐藏输入、不回显或进入日志/参数/公共配置；同 profile 中断重跑可复用，换目标拒绝复用旧 key，目标记录缺失时停止。当前样本的文件权限已只读验证；完整交互观察、中断/异常分支与跨环境重跑仍待验证。
+- 向导保存 inputs_saved_unverified 状态，并在末尾明确提示尚未核验或部署；没有 Webhook secret，不执行部署。独立报告“本机准备工具已交付”与“控制面/凭证证据分项记录、部署未验证”，不得把向导退出码或 README 示例当作 T1 完成。
 
 - 分别列出读取、dry-run、持久化写后读回与完整运行证据，关闭上述五项缺口；未来写入均先锁定正确环境，保持无关配置并验证重跑。
 - 从零应用用户开始，关闭注册后经无组织邀请建立实际身份；读取 accepted_user_id 并核验用户。错邮箱、未验证邮箱、禁用/封禁、错误环境或无法确认状态均不得授予管理员；已有目标用户可核验复用，无需重复邀请。
@@ -359,7 +398,7 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 - 正式/开发 OAuth 回调精确匹配；旧导航回调、错误 state、过期/重放回调不能完成登录。
 - 其他 WorkOS 环境 token 被拒绝；操作重试不重复建组织；身份事件重复/乱序/暂失不恢复已撤权限。
 
-目前已完成真实 WorkOS MCP 读取、管理合同发现及两条回调 dry-run，未完成持久化配置写入或任何新 TOB 运行时集成。实际待证据项：WorkOS staging 原生 PKCE、CLI 授权、公共客户端刷新/组织切换、JWT claims、事件覆盖/时延、WorkOS 创建资源幂等与本项目 Drizzle 迁移。部署/真机 QA 在获准启动后执行。
+目前已完成真实 WorkOS MCP 读取、管理合同发现、两条回调 dry-run 及追加只读核验（key 归属为使用记录关联），未完成持久化配置写入或任何新 TOB 运行时集成。实际待证据项：WorkOS staging 原生 PKCE、CLI 授权、公共客户端刷新/组织切换、JWT claims、事件覆盖/时延、WorkOS 创建资源幂等与本项目 Drizzle 迁移。本地实现可作为下一步；云写入、部署和真机 QA 按各自授权边界执行。
 
 已认可的设计方向：采用以上仓库边界；T1 仅 Worker + D1 + Org DO；手机 PKCE、CLI device flow；同一实例的一个 WorkOS application；首个管理员由部署者绑定明确 user_id。T1 仅已核验实例、active 初始化管理员准入与建组织；固定 owner/member 和独立 OAuth 回调。未新增机制，确认设计不等于启动实施。
 
