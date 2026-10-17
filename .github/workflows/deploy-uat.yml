@@ -1,0 +1,71 @@
+name: Deploy UAT
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact main commit to deploy (40 lowercase hex characters)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: tob-deploy-uat
+  cancel-in-progress: false
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CF_SEND_TELEMETRY: 'false'
+      WRANGLER_SEND_METRICS: 'false'
+      RELEASE_SHA: ${{ inputs.release_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a main commit before checking out the candidate
+        run: |
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          git checkout --detach "$RELEASE_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:wizard
+      - run: pnpm build
+  deploy:
+    needs: check
+    environment: uat
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CF_SEND_TELEMETRY: 'false'
+      WRANGLER_SEND_METRICS: 'false'
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: ${{ vars.WORKER_NAME }}
+      INSTANCE_DB_ID: ${{ vars.INSTANCE_DB_ID }}
+      INSTANCE_ID: ${{ vars.INSTANCE_ID }}
+      PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Validate, build, migrate and deploy the exact UAT target
+        run: node tools/deployment/deploy-uat.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Read back runtime identity, storage readiness and refusal
+        run: node tools/deployment/smoke.mjs

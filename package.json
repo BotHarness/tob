@@ -1,0 +1,32 @@
+{
+  "name": "tob",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "cf build",
+    "dev": "cf dev",
+    "typecheck": "cf workers types && tsc --noEmit",
+    "test": "vitest run && node --test tests/*.node.test.ts",
+    "types": "cf workers types",
+    "test:wizard": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'",
+    "db:migrate:local": "cf d1 migrations apply 00000000-0000-4000-8000-000000000001 --local --persist-to .wrangler/state --dir apps/service/db/d1/migrations",
+    "health": "node apps/cli/tob.mjs health"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.13"
+  },
+  "devDependencies": {
+    "cf": "1.0.0-beta.18",
+    "wrangler": "4.151.1",
+    "typescript": "7.0.2",
+    "drizzle-kit": "0.31.11",
+    "vitest": "5.0.5",
+    "@cloudflare/vitest-plugin": "1.4.4",
+    "@types/node": "24.10.1"
+  }
+}

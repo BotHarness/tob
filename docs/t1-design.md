@@ -1,6 +1,6 @@
 # T1 展开：仓库、自部署、手机与 CLI 登录
 
-日期：2026-10-17。状态：Human 已认可的细化方案；TOB 公开规划仓库与任务迁移已获授权，未实现、未部署 TOB 服务；已另获授权准备 WorkOS TOB staging 并完成 MCP 核验。
+状态：已授权启动 T1 的最小本地增量并配置、验证 UAT 部署。当前已实现健康/版本、D1 与 Org DO 迁移、关闭的业务入口及手动 UAT 工作流；完整手机/CLI 认证与组织路径仍待实现，T1 未完成，T2–T5 与 Prod 未启动。当前证据见 [首个增量运行记录](uat-first-increment.md)。
 
 关联：[Spec #1](https://github.com/BotHarness/tob/issues/1)、[T1 #2](https://github.com/BotHarness/tob/issues/2)。本次仅收敛 T1，不扩大 T2–T5。
 
@@ -14,7 +14,7 @@
 
 ## 2. 新仓库组织
 
-项目名 TOB — Thousands of Bots，仓库 `BotHarness/tob`。CLI 拟名 `tob`；npm scope 和许可证尚未正式确定。以下是目标目录；目前仅 docs、README 与人工准备脚本 scripts/prepare-first-deploy.sh 已交付，其余目录不代表已存在或开始创建。
+项目名 TOB — Thousands of Bots，仓库 `BotHarness/tob`。CLI 拟名 `tob`；npm scope 和许可证尚未正式确定。以下是目标目录；首个增量已增加 service、health CLI、迁移及部署工具；以下完整目标中的身份与组织命令尚未交付。
 
 ```text
 tob/
@@ -187,7 +187,7 @@ flowchart TB
 
 ### 追加只读核验：2026-10-17
 
-本轮由 Human 完成人工准备后，Agent 在本机受保护进程读取保存的输入，执行官方 API GET 与 MCP 查询；未创建资源、发信、修改云配置或部署。秘密未进入命令参数、输出或公开文档。原始账号/资源 ID 留在本机，公开结果如下。
+以下为首个增量开始前的只读核验记录：Human 完成人工准备后，Agent 在本机受保护进程读取保存的输入，执行官方 API GET 与 MCP 查询；未创建资源、发信、修改云配置或部署。秘密未进入命令参数、输出或公开文档。原始账号/资源 ID 留在本机，公开结果如下。
 
 | 项目 | 实际观察 | 可以证明 / 不能证明 |
 | --- | --- | --- |
@@ -197,19 +197,19 @@ flowchart TB
 | key 有效性 | 本机读取 WORKOS_API_KEY，仅发往 api.workos.com；GET /user_management/users?limit=1 返回 HTTP 200，用户列表为空 | 已验证该 key 可读取用户列表；空列表或 HTTP 200 本身不能证明环境归属，也不证明写权限 |
 | key 环境归属 | 请求窗口为 14:34:06.214–14:34:06.749 UTC；随后 TOB Staging 内名为 Tob 的 key 的 lastUsedAt 从 14:31:54.106 更新为 14:34:06.729 UTC；其 applicationId 指向上述已核验应用 | **使用记录关联证据**：时间落在本次请求窗口且应用/环境映射吻合；不是 API 直接返回凭证归属，不是密钥全文比对，也不保证并发使用时可以唯一归因 |
 
-仍未核验 Worker Secrets 注入、Webhook 签名秘密、云写权限及真实登录/部署。上述关联证据保留原等级，不改写为“归属直接证明”；将来有并发调用、时间未更新或映射不明确时应报告无法确认，不能靠空数据/名称推断。本轮不重查此前所有注册/角色开关，前表仍是此前时间点的观察。
+该只读核验时点尚未核验 Worker Secrets 注入、Webhook 签名秘密、云写权限及真实登录/部署；后续 UAT 增量证据单列，不覆盖这里的历史证据。上述关联证据保留原等级，不改写为“归属直接证明”；将来有并发调用、时间未更新或映射不明确时应报告无法确认，不能靠空数据/名称推断。本轮不重查此前所有注册/角色开关，前表仍是此前时间点的观察。
 
 本机 PREPARATION_STATUS 仍为 inputs_saved_unverified：它是离线向导的产物状态，不被这次人工只读核验改写为部署就绪。更换 key、WorkOS 环境/application、Cloudflare 账号或 CI 凭证后需重新核验，不能直接沿用本机这份证据。官方说明确认环境 key 的请求按所属环境隔离，但未提供此次响应中的直接环境证明：[API authentication](https://workos.com/docs/reference/api-authentication)。
 
 ### UAT / Prod 部署合同
 
-采用两个 GitHub Environments：`uat` 与 `production`（界面可称 Prod），同名 Secrets/Variables 按环境隔离；本地开发不等于第三套共享云环境。UAT 计划使用已核验的 TOB WorkOS Staging，Prod 必须独立使用 Production；Cloudflare Worker、D1、DO namespace、实例 ID/origin、Webhook 与运行秘密各自独立。当前尚未创建或配置两条部署流水线及 GitHub Secrets。
+采用两个 GitHub Environments：`uat` 与 `production`（界面可称 Prod），同名 Secrets/Variables 按环境隔离；本地开发不等于第三套共享云环境。UAT 计划使用已核验的 TOB WorkOS Staging，Prod 必须独立使用 Production；Cloudflare Worker、D1、DO namespace、实例 ID/origin、Webhook 与运行秘密各自独立。首个增量已创建 UAT 流水线与环境级 CI token；Prod 流水线、WorkOS 运行 Secrets 仍未创建/注入。
 
 先本地推进 T1，再经放行验证 UAT；Prod 仅晋级已通过 UAT/Human QA 的确切 commit，不随文档/main 推送自动发布。自部署可只启用一套环境，不要求购买/启用生产才能开发。配置字段、凭证交接、发布与拒绝条件见 [UAT / Prod 部署约定](https://github.com/BotHarness/tob/blob/main/docs/deployment-environments.md)。
 
 ### 本地开始与远端放行的区别
 
-Human 已同意下一步在本地按 T1 → T2 → T3 → T4 → T5 推进；本轮仍只更新方案和验收，未开始服务实现。五项缺口是 T1 的交付门槛，不要求先完成所有云端写入才能开始本地代码。
+Human 已授权推进 T1 首个本地/UAT 增量；T2–T5 仍等待此前切片的完整验证与反馈。五项缺口是 T1 的交付门槛，不要求先完成所有云端写入才能开始本地代码。
 
 | 何时解决 | 剩余事项 |
 | --- | --- |
@@ -398,11 +398,11 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 - 正式/开发 OAuth 回调精确匹配；旧导航回调、错误 state、过期/重放回调不能完成登录。
 - 其他 WorkOS 环境 token 被拒绝；操作重试不重复建组织；身份事件重复/乱序/暂失不恢复已撤权限。
 
-目前已完成真实 WorkOS MCP 读取、管理合同发现、两条回调 dry-run 及追加只读核验（key 归属为使用记录关联），未完成持久化配置写入或任何新 TOB 运行时集成。实际待证据项：WorkOS staging 原生 PKCE、CLI 授权、公共客户端刷新/组织切换、JWT claims、事件覆盖/时延、WorkOS 创建资源幂等与本项目 Drizzle 迁移。本地实现可作为下一步；云写入、部署和真机 QA 按各自授权边界执行。
+目前已完成真实 WorkOS MCP 读取、管理合同发现、两条回调 dry-run 及追加只读核验（key 归属为使用记录关联），WorkOS 持久化配置写入和认证集成仍未完成；Cloudflare 本地运行及 UAT 增量状态见运行记录。实际待证据项：WorkOS staging 原生 PKCE、CLI 授权、公共客户端刷新/组织切换、JWT claims、事件覆盖/时延、WorkOS 创建资源幂等与本项目 Drizzle 迁移。本地实现可作为下一步；云写入、部署和真机 QA 按各自授权边界执行。
 
 已认可的设计方向：采用以上仓库边界；T1 仅 Worker + D1 + Org DO；手机 PKCE、CLI device flow；同一实例的一个 WorkOS application；首个管理员由部署者绑定明确 user_id。T1 仅已核验实例、active 初始化管理员准入与建组织；固定 owner/member 和独立 OAuth 回调。未新增机制，确认设计不等于启动实施。
 
-审查修订依据：[WorkOS roles](https://workos.com/docs/authkit/roles-and-permissions)、[RFC 8252 §7.1](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.1)、[RFC 9700 §4.9.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.9.1)。本次仅更新方案；实现、部署和真机验证尚未开始。
+审查修订依据：[WorkOS roles](https://workos.com/docs/authkit/roles-and-permissions)、[RFC 8252 §7.1](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.1)、[RFC 9700 §4.9.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.9.1)。完整认证实现与真机验证尚未完成；首个部署增量不替代这些门槛。
 
 ## 10. 后续群管理边界
 

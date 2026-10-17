@@ -1,6 +1,6 @@
 # UAT / Prod 部署约定
 
-日期：2026-10-17。状态：已纳入 T1 的目标设计，尚无部署工作流、GitHub Environment 配置、Secrets 注入或实际部署。本文件不授权创建资源或触发工作流。
+日期：2026-10-17。状态：已按单独授权实现首个 UAT 增量、配置 uat Environment 与 CI token。实际运行证据与重试步骤见 [首个增量运行记录](uat-first-increment.md)；以下 WorkOS/Prod 内容仍为目标合同。
 
 ## 环境与资源
 
@@ -15,7 +15,7 @@
 
 可使用同一个 Cloudflare account，但账号相同不代表资源/凭证权限已经隔离。部署前比较绑定的真实 ID；环境名或 Worker 后缀不是隔离证明。T2 增加的 Channel DO 与未来 R2 同样隔离。移动回调按实际 App 构建精确登记；WorkOS 类型、部署目标和 App 回调是不同字段，不能简单按 uat/prod 字符串猜测。
 
-本地开发采用本地 Worker/D1/SQLite DO 与明确标记的认证 fixture，不自动连接 UAT/Prod。现有 `tob-staging` 是本机准备 profile，WorkOS Staging 是供应商环境，UAT 是应用部署目标：三者显式映射，不新建第三套共享 Staging 云栈。当前向导尚不支持 Production，不能改文件名复用其 key。
+本地开发采用本地 Worker/D1/SQLite DO；首个增量没有认证 fixture 或可用认证路径，不自动连接 UAT/Prod。现有 `tob-staging` 是本机准备 profile，WorkOS Staging 是供应商环境，UAT 是应用部署目标：三者显式映射，不新建第三套共享 Staging 云栈。当前向导尚不支持 Production，不能改文件名复用其 key。
 
 ## GitHub 配置合同
 
@@ -54,7 +54,7 @@ UAT 与 Prod 从同一源 commit 构建但使用各自配置，不要求二进�
 - GEO（checkout `59ec0fd`）：`.github/workflows/deploy-uat.yml` / `deploy-production.yml`。参考 environment 级凭证、精确 SHA、迁移前后检查、部署串行不中断。其租户分支、专用 runner 和私有仓库审核替代规则不复制。
 - grillmaker（checkout `ef186d6`）：`.github/workflows/ci.yml` / `deploy-production.yml`。参考 UAT 通过后生产晋级、配置缺失拒绝、认证配置防串环境及发布后版本读回。其生产 tag 触发和 UAT 自动取消正在部署的行为不采用；TOB 首期统一手动触发且不取消迁移中的发布。
 
-## 验收条件（未实现）
+## 完整环境验收条件（首个增量不代表全部完成）
 
 - [ ] 本地与 PR 无云写入；同一配置解析器供本机/CI 使用，目标为显式 uat 或 production；未知目标、缺失值和跨环境绑定在云写入前拒绝。
 - [ ] 每个 Environment 的 Secrets/Variables 独立；检查 WorkOS 环境类型、Client ID、Worker/D1/DO 与公开 origin 映射，UAT key/token 不能访问 Prod 业务；真实凭证写权限另行验证。
@@ -62,4 +62,4 @@ UAT 与 Prod 从同一源 commit 构建但使用各自配置，不要求二进�
 - [ ] Prod 只允许晋级同 SHA 的 UAT 成功与 Human QA 记录；工作流 ref、环境保护、配置与 Secrets 可用性须在首次发布前核验。
 - [ ] 部署串行、中断读回和迁移恢复有证据；运行版本/实例信息可读回；代码回退与数据恢复分开记录。
 
-本轮仅提交文档和任务条件；不创建 GitHub Environments、不上传 Secrets、不创建云资源、不部署。
+首个增量仅配置和部署 UAT；WorkOS 运行 Secrets 注入、签名投递及 Prod 保护/部署仍待后续各自验收。

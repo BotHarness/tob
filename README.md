@@ -6,7 +6,7 @@ TOB is BOT spelled backwards, and a nod to “To B”: helping teams and enterpr
 
 TOB 是面向人类与各种 Agent 的开放群聊协作服务：云端共享讨论，各 Agent 在自己的环境中执行获授权的工作。
 
-> **Status: planning plus a local preparation wizard.** The repository includes a runnable human-preparation script, but no runnable service, deployment installer, SDK, or completed deployment. T1–T5 remain `ready-for-human`; the next step is locally implementing T1 in tracer-bullet order. No service implementation has started; cloud writes and deployments still need separate authorization.
+> **Status: T1 first deployment increment.** A runnable Hono Worker, health CLI, D1/Org DO migrations and a manual UAT workflow are available. Business endpoints remain closed. WorkOS login, administrator initialization, mobile integration and organizations are still pending; T1 is not complete. Production deployment is disabled.
 
 ## First-deployment preparation
 
@@ -25,6 +25,27 @@ Target IDs (and any retained legacy name hints) are saved separately from secret
 **Completion means local human preparation only.** It does not verify provider authorization, resource IDs, key validity, or deploy anything. The secret file still lacks the Webhook secret. Webhook creation, Worker Secrets injection, deployment, and runtime verification remain future T1 work; no cloud actions run automatically when the wizard finishes.
 
 See the [preparation guide / 中文说明](docs/first-deploy-preparation.md) for steps, storage and retry behavior, and the [T1 plan](docs/t1-design.md) for the remaining delivery gates. Bash syntax, help output and static boundaries have been checked; no interactive credential flow or cloud runtime has been verified.
+
+## Run the first local increment
+
+Use Node from `.node-version` and the pinned pnpm version:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm test:wizard
+pnpm build
+pnpm db:migrate:local
+pnpm dev
+# In another terminal:
+pnpm health --server http://127.0.0.1:8787
+```
+
+`/healthz` reports the version; `/readyz` checks both SQLite owners. `/api/*` remains closed even if an administrator row exists. No WorkOS credentials are needed for this increment. Use a fresh local `.wrangler/state` directory if you previously ran an unpublished migration with a different filename; never reset a remote database to resolve migration bookkeeping.
+
+For UAT, follow [the deployment runbook](docs/uat-first-increment.md). GitHub CI uses no cloud secrets; deployment is a separate manual workflow for an exact main commit. This is preparatory work within T1, not the completed phone/CLI tracer bullet.
 
 ## What TOB is for
 
@@ -97,7 +118,7 @@ The first operation is a bounded, pre-authorized local health check, not arbitra
 | [T4](https://github.com/BotHarness/tob/issues/5) | Phone asks DeepSeekBot to delegate to the external agent; the result returns to the group |
 | [T5](https://github.com/BotHarness/tob/issues/6) | The same path recovers from disconnections and crashes without blindly repeating work |
 
-Each slice includes its public contract, persistence, relevant client/CLI interaction and Human QA. T4 proves the happy path; T5 completes the first-path acceptance. No slice has started.
+Each slice includes its public contract, persistence, relevant client/CLI interaction and Human QA. T4 proves the happy path; T5 completes the first-path acceptance. T1 has started with the deployment increment; its full user-facing path remains pending. T2–T5 have not started.
 
 The broader plan includes inbound webhooks and invitations for additional humans. A later group-management slice will allow an agent's own identity to hold the group-owner or administrator role, operate within granted permissions, and approve/reject join requests when multi-user admission is delivered. Role grants remain revocable, with an authorized recovery path; channel authority never grants cloud-account administration, organization admission or local execution rights. T1–T5 do not implement these later permissions. Full OAuth administration, enterprise SSO, billing, attachments, federation and a shared filesystem are outside the first path. The official hosted offering may later add a private operations/billing layer that reuses this core.
 
