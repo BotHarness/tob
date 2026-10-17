@@ -269,3 +269,24 @@ it("missing owner cannot fall back to default member and caller roles are reject
   expect(provider.calls).toEqual({ creates: 0, members: 0 });
   expect((await orgRequest("", "POST", { name: "Spoof", role: "owner" })).status).toBe(400);
 });
+
+it("creation recovery never promotes a membership changed to member after response loss", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  const provider = organizationProvider({ loseMembership: true });
+  expect((await orgRequest("", "POST", { name: "Interrupted owner" })).status).toBe(503);
+  provider.member!.role.slug = "member";
+  const retry = await orgRequest("", "POST", { name: "Interrupted owner" });
+  expect(retry.status).toBe(409);
+  expect(await retry.json()).toEqual({ error: { code: "OWNER_MEMBERSHIP_REQUIRED" } });
+  expect(provider.calls).toEqual({ creates: 1, members: 1 });
+  expect(await env.INSTANCE_DB.prepare("SELECT count(*) AS n FROM organization_link WHERE lifecycle='active'").first("n")).toBe(0);
+});
+it("provider outage after a successful owner read cannot authorize a cached settings write", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  organizationProvider(); await orgRequest("", "POST", { name: "No stale grants" });
+  expect((await orgRequest("/org_test", "GET", undefined, { org_id: "org_test" })).status).toBe(200);
+  vi.restoreAllMocks();
+  vi.spyOn(globalThis, "fetch").mockImplementation(async url => String(url).includes("/jwks/") ? Response.json({ keys: [publicKey] }) : new Response(null, { status: 503 }));
+  expect((await orgRequest("/org_test", "PATCH", { description: "Offline write", version: 1 }, { org_id: "org_test" })).status).toBe(503);
+  expect(await env.ORGS.getByName("org_test").read("org_test")).toMatchObject({ version: 1, description: "" });
+});
