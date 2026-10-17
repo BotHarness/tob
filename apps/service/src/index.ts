@@ -30,7 +30,8 @@ const api = app
       return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);
     }
     try {
-      const response = await fetch("https://api.workos.com/user_management/sessions/revoke", { method: "POST", headers: { Authorization: `Bearer ${c.env.WORKOS_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ session_id: identity.sessionId }), redirect: "error", signal: AbortSignal.timeout(10000) });
+      // workerd rejects redirect:error. Never follow redirects with the server key.
+      const response = await fetch("https://api.workos.com/user_management/sessions/revoke", { method: "POST", headers: { Authorization: `Bearer ${c.env.WORKOS_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ session_id: identity.sessionId }), redirect: "manual", signal: AbortSignal.timeout(10000) });
       if (!response.ok) {
         console.error(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_response", status: response.status }));
         return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);

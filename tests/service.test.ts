@@ -138,7 +138,9 @@ it("logout revokes only the signed current session, even without business admiss
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
     if (String(url) === "https://api.workos.com/sso/jwks/client_local") return Response.json({ keys: [publicKey] });
     expect(String(url)).toBe("https://api.workos.com/user_management/sessions/revoke");
-    expect(init?.redirect).toBe("error");
+    // Exercise native workerd option validation; a fetch mock alone hid the runtime failure.
+    const outgoing = new Request(String(url), init);
+    expect(outgoing.redirect).toBe("manual");
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer local-test-secret");
     revokeCalls.push(JSON.parse(String(init?.body))); return new Response(null, { status: 200 });
   });
@@ -166,4 +168,21 @@ it("logout transport diagnostics exclude exception messages and credentials", as
   const r = await request("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + await token() } });
   expect(r.status).toBe(503);
   expect(logs).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_transport", kind: "TypeError" }));
+});
+
+it("logout refuses provider redirects without following them or reporting revocation", async () => {
+  const calls: string[] = [];
+  const logs = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (String(url).includes("/jwks/")) return Response.json({ keys: [publicKey] });
+    const outgoing = new Request(String(url), init);
+    expect(outgoing.redirect).toBe("manual");
+    calls.push(outgoing.url);
+    return new Response(null, { status: 302, headers: { Location: "https://untrusted.example/" } });
+  });
+  const r = await request("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + await token() } });
+  expect(r.status).toBe(503);
+  expect(await r.json()).toEqual({ error: { code: "LOGOUT_UNCONFIRMED" } });
+  expect(calls).toEqual(["https://api.workos.com/user_management/sessions/revoke"]);
+  expect(logs).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_response", status: 302 }));
 });
