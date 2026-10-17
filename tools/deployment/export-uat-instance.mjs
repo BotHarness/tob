@@ -10,18 +10,20 @@ try {
   // This is not a credential or a proof trusted by importing clients.
   assert.equal(process.argv[3],'--confirmed-workos-environment');
   assert.equal(process.argv[4],c.WORKOS_ENVIRONMENT_ID);
+  // Operator must have read back this exact callback on the selected WorkOS application.
+  if(c.MOBILE_REDIRECT_URI)assert.equal(process.argv[5],'--confirmed-mobile-redirect='+c.MOBILE_REDIRECT_URI);
   assert.equal(c.WORKER_NAME,'tob-service-uat');assert.equal(c.INSTANCE_ID,'tob-instance-uat');
   const cf=path=>jsonRequest(`https://api.cloudflare.com/client/v4/accounts/${c.CLOUDFLARE_ACCOUNT_ID}${path}`,{headers:{Authorization:'Bearer '+p.env('ci-secrets.env').CLOUDFLARE_API_TOKEN}});
   phase='cloudflare-control-plane';
   const settings=await cf(`/workers/scripts/${c.WORKER_NAME}/settings`);
   assert.equal(settings.success,true);
-  for(const name of ['INSTANCE_ID','PUBLIC_BASE_URL','WORKOS_CLIENT_ID','WORKOS_ISSUER','WORKOS_AUTH_DOMAIN','WORKOS_ENVIRONMENT_ID']) assert.equal(settings.result.bindings.find(b=>b.name===name)?.text,c[name]);
+  for(const name of ['INSTANCE_ID','PUBLIC_BASE_URL','WORKOS_CLIENT_ID','WORKOS_ISSUER','WORKOS_AUTH_DOMAIN','WORKOS_ENVIRONMENT_ID','MOBILE_REDIRECT_URI']) assert.equal(settings.result.bindings.find(b=>b.name===name)?.text,c[name] ?? (name === 'MOBILE_REDIRECT_URI' ? '' : undefined));
   const subdomain=await cf('/workers/subdomain');
   assert.equal(c.PUBLIC_BASE_URL,`https://${c.WORKER_NAME}.${subdomain.result.subdomain}.workers.dev`);
   phase='workos-discovery';
   const oidc=await jsonRequest(`https://api.workos.com/user_management/${c.WORKOS_CLIENT_ID}/.well-known/openid-configuration`);
   assert.equal(oidc.issuer,c.WORKOS_ISSUER);assert.equal(oidc.jwks_uri,`https://api.workos.com/sso/jwks/${c.WORKOS_CLIENT_ID}`);
-  const document=publicInstance({instanceId:c.INSTANCE_ID,environment:'uat',server:c.PUBLIC_BASE_URL,clientId:c.WORKOS_CLIENT_ID,issuer:c.WORKOS_ISSUER,authkitDomain:c.WORKOS_AUTH_DOMAIN});
+  const document=publicInstance({instanceId:c.INSTANCE_ID,environment:'uat',server:c.PUBLIC_BASE_URL,clientId:c.WORKOS_CLIENT_ID,issuer:c.WORKOS_ISSUER,authkitDomain:c.WORKOS_AUTH_DOMAIN,mobileRedirectUri:c.MOBILE_REDIRECT_URI});
   phase='service-discovery';
   assert.equal(connectionKey(parseInstance(await jsonRequest(c.PUBLIC_BASE_URL+'/.well-known/open-cloud-groups'))),connectionKey(document));
   // Only explicit public fields are exported. No key, user identity or cloud resource IDs.

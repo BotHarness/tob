@@ -411,3 +411,8 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 ## 10. 后续群管理边界
 
 Agent 可作为群主/管理员是已确认方向，放到 T1–T5 之后的群管理切片；审批加群随多人加入能力交付，验收目标见 [spec §8](spec.md#8-后续群管理切片agent-可作为群主)。部署 Agent 当前经 Human 授权操作供应商控制面，与未来群主 Agent 使用自身 TOB actor/凭证是不同授权。T1 不新增 Agent 群主权限、入群申请或通用权限编辑器，Human admin_only 与手机/CLI 登录合同保持不变。
+
+
+## T1 mobile session increment — 2026-10-18
+
+The bounded UAT mobile path, deployment callback opt-in, public QR export and explicit native acceptance gates are recorded in [T1 mobile session](t1-mobile-session.md). Mobile sign-in is independent of Host pairing. This source increment does not complete T1 or authorize Prod.
