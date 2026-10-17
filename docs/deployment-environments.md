@@ -27,7 +27,7 @@
 | `WORKOS_API_KEY` | Environment Secret → 目标 Worker Secret | 环境级运行密钥；仅受保护配置/部署步骤读取，不进入构建产物、参数、日志或二维码 |
 | `WORKOS_WEBHOOK_SECRET` | Environment Secret → 目标 Worker Secret | 该环境事件端点的签名秘密；需安全取得和交接，不能从 MCP 脱敏 metadata 推导 |
 | `CLOUDFLARE_ACCOUNT_ID` | Environment Variable | 目标账号；公开标识但仍以控制面读回核验 |
-| `WORKOS_ENVIRONMENT_ID`、`WORKOS_CLIENT_ID`、`WORKOS_AUTH_DOMAIN` | Environment Variables | 对照认证控制面；受支持 issuer/端点按固定合同生成并核验，不能把任意 URL 当可信认证服务 |
+| `WORKOS_ENVIRONMENT_ID`、`WORKOS_CLIENT_ID`、`WORKOS_ISSUER` | Environment Variables | 对照认证控制面；受支持 issuer/端点按固定合同生成并核验，不能把任意 URL 当可信认证服务 |
 | `INSTANCE_ID`、`PUBLIC_BASE_URL` | Environment Variables | 每环境不同；交付到公开连接配置 |
 | `WORKER_NAME`、`INSTANCE_DB_ID` | Environment Variables | 明确选定目标，正常发布阶段不因缺失而自动创建资源 |
 

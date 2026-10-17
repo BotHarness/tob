@@ -1,11 +1,12 @@
 import { env, exports } from "cloudflare:workers";
 import { applyD1Migrations, reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
 import type { D1Migration } from "@cloudflare/vitest-plugin";
-import { beforeEach, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
 declare global { namespace Cloudflare { interface Env { TEST_MIGRATIONS: D1Migration[] } } }
 const request = (path: string, init?: RequestInit) => exports.default.fetch(new Request(`https://example.test${path}`, init));
 beforeEach(async () => { await reset(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 it("reports its release but cannot report ready before D1 migrations", async () => {
   const live = await request("/healthz");
@@ -22,24 +23,20 @@ it("migrates both real SQLite bindings and repeated migrations keep data", async
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
   const ready = await request("/readyz");
   expect(ready.status).toBe(200);
-  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 1, orgSchemaVersion: 1, businessEnabled: false });
+  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 2, orgSchemaVersion: 1, businessEnabled: false });
   expect(await env.INSTANCE_DB.prepare("SELECT config_version FROM instance_config").first("config_version")).toBe(7);
   await expect(env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (2,'admin_only','admin_only',1)").run()).rejects.toThrow();
 });
 
-it("refuses uninitialized business and never trusts tokens or supplied owner identity", async () => {
+it("exposes no public bootstrap or business writes, even with spoofed identity", async () => {
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
-  for (const path of ["/api/me", "/api/organizations", "/api/admin/initialize"]) {
+  for (const path of ["/api/organizations", "/api/admin/initialize"]) {
     const response = await request(path, { method: "POST", headers: { Authorization: "Bearer public-test-fixture", "X-User-Id": "user_fixture", "X-Role": "owner" } });
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: { code: "INSTANCE_NOT_INITIALIZED" } });
+    expect(await response.json()).toEqual({ error: { code: "FEATURE_NOT_AVAILABLE" } });
   }
+  expect((await request("/api/me")).status).toBe(401);
   expect(await env.INSTANCE_DB.prepare("SELECT count(*) AS n FROM instance_admin").first("n")).toBe(0);
-  await env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (1,'admin_only','admin_only',1)").run();
-  await env.INSTANCE_DB.prepare("INSERT INTO instance_admin VALUES ('user_fixture','test','2026-10-17T00:00:00Z','active')").run();
-  const response = await request("/api/me");
-  expect(response.status).toBe(503);
-  expect(await response.json()).toEqual({ error: { code: "AUTH_NOT_IMPLEMENTED" } });
 });
 
 it("Org migrations survive eviction without duplicate application and keep objects isolated", async () => {
@@ -55,4 +52,73 @@ it("Org migrations survive eviction without duplicate application and keep objec
   expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM org_config").one().n)).toBe(1);
   expect(await runInDurableObject(first, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM __drizzle_migrations").one().n)).toBe(1);
   expect(await runInDurableObject(second, (_instance, state) => state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM org_config").one().n)).toBe(0);
+});
+
+import { generateKeyPair, exportJWK, SignJWT, type JWTPayload } from "jose";
+import { INITIALIZE_SQL, checkReceipt, type Receipt } from "../tools/bootstrap/contract";
+let keyPair: Awaited<ReturnType<typeof generateKeyPair>>;
+let publicKey: Awaited<ReturnType<typeof exportJWK>>;
+beforeAll(async () => {
+  keyPair = await generateKeyPair("RS256");
+  publicKey = { ...await exportJWK(keyPair.publicKey), kid: "test-key", alg: "RS256", use: "sig" };
+});
+function mockKeys() {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+    expect(String(url)).toBe("https://api.workos.com/sso/jwks/client_local");
+    return Response.json({ keys: [publicKey] });
+  });
+}
+const token = (claims: JWTPayload = {}) => new SignJWT({ sub: "user_admin", sid: "session_fixture", iss: "https://api.workos.com/", iat: Math.floor(Date.now()/1000), exp: Math.floor(Date.now()/1000)+300, ...claims }).setProtectedHeader({ alg: "RS256", kid: "test-key" }).sign(keyPair.privateKey);
+const authenticated = async (claims: JWTPayload = {}) => request("/api/me", { headers: { Authorization: "Bearer " + await token(claims) } });
+const initialize = (userId = "user_admin", hash = "a".repeat(64)) => env.INSTANCE_DB.prepare(INITIALIZE_SQL).bind("test-deployer", hash, userId, "2026-10-18T00:00:00Z").run();
+
+it("requires valid signature and claims, then the durable policy/receipt/active administrator", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); mockKeys();
+  expect((await authenticated()).status).toBe(503);
+  await initialize();
+  const accepted = await authenticated();
+  expect(accepted.status).toBe(200);
+  expect(await accepted.json()).toEqual({ userId: "user_admin", instanceId: "tob-local", instanceRole: "admin", capabilities: ["instance:read-self"] });
+  expect((await authenticated({ sub: "user_other" })).status).toBe(403);
+  for (const claims of [{ iss: "https://other.example/" }, { exp: 1 }, { sid: undefined }, { aud: "client_other" }, { azp: "client_other" }, { sub: "agent_untrusted" }]) expect((await authenticated(claims)).status).toBe(401);
+  const otherKey = await generateKeyPair("RS256");
+  const forged = await new SignJWT({ sub: "user_admin", sid: "session_fixture" }).setProtectedHeader({ alg: "RS256", kid: "test-key" }).setIssuer("https://api.workos.com/").setIssuedAt().setExpirationTime("5m").sign(otherKey.privateKey);
+  expect((await request("/api/me", { headers: { Authorization: "Bearer " + forged } })).status).toBe(401);
+  await env.INSTANCE_DB.prepare("UPDATE instance_admin SET status='revoked'").run();
+  expect((await authenticated()).status).toBe(403);
+  await initialize();
+  expect(await env.INSTANCE_DB.prepare("SELECT status FROM instance_admin").first("status")).toBe("revoked");
+  await env.INSTANCE_DB.prepare("DELETE FROM instance_config").run();
+  expect((await authenticated()).status).toBe(503);
+});
+
+it("provider failure cannot grant access or appear as successful authentication", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("unavailable", { status: 503 }));
+  expect((await authenticated()).status).toBe(503);
+});
+
+it("first admin is atomic, replayable and single-winner across concurrent different targets", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
+  await Promise.all([initialize("user_a", "a".repeat(64)), initialize("user_b", "b".repeat(64))]);
+  const receipt = await env.INSTANCE_DB.prepare("SELECT * FROM management_operation").first<Receipt>();
+  expect(await env.INSTANCE_DB.prepare("SELECT count(*) AS n FROM instance_admin").first("n")).toBe(1);
+  const winner = receipt!.target_id;
+  const hash = receipt!.payload_hash;
+  await initialize(winner, hash); // response-lost replay keeps original state
+  const admin = await env.INSTANCE_DB.prepare("SELECT * FROM instance_admin").first<{ status: string; granted_at: string }>();
+  expect(() => checkReceipt(receipt, hash, winner, admin!.status, true)).not.toThrow();
+  expect(admin!.granted_at).toBe("2026-10-18T00:00:00Z");
+  expect(() => checkReceipt(receipt, "c".repeat(64), "user_c", "active", true)).toThrow();
+  await env.INSTANCE_DB.prepare("UPDATE instance_admin SET status='inactive'").run();
+  await initialize(winner, hash);
+  expect(() => checkReceipt(receipt, hash, winner, "inactive", true)).toThrow();
+  expect(await env.INSTANCE_DB.prepare("SELECT status FROM instance_admin").first("status")).toBe("inactive");
+});
+
+it("failure after policy insertion rolls back policy, administrator and receipt together", async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
+  await env.INSTANCE_DB.prepare("CREATE TRIGGER test_failure BEFORE INSERT ON instance_admin BEGIN SELECT RAISE(ABORT, 'TEST_FAILURE'); END").run();
+  await expect(initialize()).rejects.toThrow();
+  for (const table of ["instance_admin", "instance_config", "management_operation"]) expect(await env.INSTANCE_DB.prepare(`SELECT count(*) AS n FROM ${table}`).first("n")).toBe(0);
 });

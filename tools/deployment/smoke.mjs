@@ -18,11 +18,14 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
     assert.deepEqual(health.body, { service: 'tob', environment: 'uat', instanceId: target.instanceId, releaseSha: target.releaseSha, businessEnabled: false });
     const ready = await get('/readyz');
     assert.equal(ready.status, 200);
-    assert.deepEqual(ready.body, { ready: true, releaseSha: target.releaseSha, d1SchemaVersion: 1, orgSchemaVersion: 1, businessEnabled: false });
+    assert.deepEqual(ready.body, { ready: true, releaseSha: target.releaseSha, d1SchemaVersion: 2, orgSchemaVersion: 1, businessEnabled: false });
     const refusal = await get('/api/organizations', 'POST');
     assert.equal(refusal.status, 503);
-    assert.equal(refusal.body.error.code, 'INSTANCE_NOT_INITIALIZED');
-    console.log(JSON.stringify({ event: 'uat_smoke_passed', releaseSha: target.releaseSha, health: true, d1: true, orgDo: true, uninitializedRefused: true }));
+    assert.equal(refusal.body.error.code, 'FEATURE_NOT_AVAILABLE');
+    const anonymous = await get('/api/me');
+    assert.equal(anonymous.status, 401);
+    assert.equal(anonymous.body.error.code, 'UNAUTHENTICATED');
+    console.log(JSON.stringify({ event: 'uat_smoke_passed', releaseSha: target.releaseSha, health: true, d1: true, orgDo: true, businessCommandsClosed: true }));
     break;
   } catch {
     if (attempt === attempts) { console.error('UAT_SMOKE_FAILED'); process.exitCode = 1; break; }
