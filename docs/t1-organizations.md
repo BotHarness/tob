@@ -28,7 +28,7 @@ WorkOS owns identity/membership. D1 `organization_link` holds the instance mappi
 
 All requests first require the originally initialized active instance administrator and fixed `admin_only` policies. Organization lists intersect current memberships with active mappings. Reads require a selected-org token and active owner/member membership; writes additionally require current owner. A stale owner JWT, unknown role, multiple roles, inactive membership, another instance's organization or provider outage cannot authorize a write. Instance administrator does not imply organization owner. The T1 single-admin boundary is unchanged.
 
-For the live permission check, use the same initialized user and change **only the newly created test organization's membership** through the authorized UAT control plane: owner → member → inactive → owner. This checks role boundaries without admitting a new instance user or changing the original administrator binding. Restore that test membership after checks. No role-management API/UI is added to TOB.
+For the live permission check, use the same initialized user and change **only the newly created test organization's membership** through the authorized UAT control plane: owner → member → owner. This checks role boundaries without admitting a new instance user or changing the original administrator binding. Restore that test membership after checks. Live deactivation is a separate unexecuted gate; automatic approval review did not authorize it in this run. No role-management API/UI is added to TOB.
 
 ## API / CLI
 
@@ -57,7 +57,19 @@ The UAT role setup creates `owner` with no provider-wide permissions, retaining 
 - Local workerd: signed JWT admission; one organization across concurrency/replay; response-loss reconciliation after organization/membership creation; real D1/DO persistence/eviction; stale settings rejection; scoped token; owner/member/inactive/unknown/multiple-role denial.
 - CLI: real signed fixture login/refresh, organization selection through WorkOS token endpoint, independent credentials and server refusal propagation.
 - Mobile source: create/select/update/restart; stable request across lost response; member denial; mismatched response refusal.
-- Real UAT + assigned Simulator: pending, recorded separately after deployment. API-prepared test authentication is distinct from Hosted AuthKit browser acceptance already recorded in #2103.
+- Real UAT + assigned Simulator: mobile create/owner save → independent CLI same-ID list/select/read, stale-owner denial after member downgrade, readonly view, restored owner, cold restart and logout isolation passed. API-prepared test authentication is distinct from Hosted AuthKit browser acceptance already recorded in #2103.
 - Physical camera/phone, Android, remaining accessibility, signed identity webhooks/reconciliation and final Human review remain separate T1 gates.
 
 Official references: [WorkOS Organizations](https://workos.com/docs/reference/organization), [membership API](https://workos.com/docs/reference/authkit/organization-membership), [switching organizations](https://workos.com/docs/authkit/sessions#switching-organizations), [Durable Objects rules](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/).
+
+## Live UAT evidence — 2026-10-18 JST
+
+Deployed Worker `e5bc56298c2f63aa457ba39a1ce9ad45e2270824`, version `d492f524-3489-4f97-b300-ec1e8671752e`; D1 migration and Org DO schema probe passed. Review head `fe5a8cb` adds tests only. WorkOS owner role was created with no provider-wide permissions; member remains default in single-role mode. Existing admin binding was not changed.
+
+Phone created one synthetic organization through its actual UI, became owner, and saved description/version 2. Formal independent CLI listed, selected and read the exact same ID/content/version. After temporary member downgrade, both the stale-owner CLI credential and phone UI received 403 `ORGANIZATION_OWNER_REQUIRED`; original data remained unchanged. Restored active owner and read back from control plane, CLI and phone. Mobile cold restart revalidated the same selection; logout revoked only its session and rejected its latest refresh token while CLI stayed admitted. Registration/Magic Auth both read back disabled.
+
+The first phone run exposed stale unsaved text/list role after reselection; fixed and repeated at mobile runtime `1b39324c5034eea2741abed62d579cd1044f2f86`. Create/save footage is at preceding `494a20f1e`; only the later selection/display behavior changed. [Mobile Draft #2121](https://github.com/BotHarness/DeepSeekBot/pull/2121) carries screenshots, recordings and the bounded report. No merge or Prod changes.
+
+Local checks: 20 workerd + 19 Node/CLI/contracts + 2 wizard tests, typecheck/build passed. A repeated workerd run under concurrent native compilation hit the default 5-second timeout; the same assertions passed with a 20-second timeout. This is recorded as a timing failure/retry, not a new production guarantee.
+
+Automatic approval review rejected optional second-org creation and real membership deactivation as beyond this requested slice; neither executed. Switching here means unscoped session → the same phone-created organization, not a demonstrated two-organization switch. Inactive-role, provider-outage and response-loss recovery remain local-test evidence only. Signed identity events/reconciliation, live revocation propagation/configuration interruption recovery, remaining physical/platform acceptance and Human review still block full T1 closure.
