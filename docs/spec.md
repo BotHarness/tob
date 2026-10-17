@@ -84,7 +84,10 @@ flowchart TB
 - 手机保持系统浏览器 Authorization Code + PKCE，CLI 保持设备授权；不增加认证中转、第二种 Human 会话、DPoP 或自动实例登记机制。手机 OAuth 专用回调定为 `ai.botharness.deepseekbot:/oauth2redirect`，开发版为 `ai.botharness.deepseekbot.dev:/oauth2redirect`，分别精确登记；现有 deepseekbot 导航 scheme 不作为新的 OAuth 回调。state、verifier、已核验实例及回调绑定为一次性事务，仍须真实原生构建验证。
 - 首条路径只启用一种 WorkOS 托管登录方式，建议邮箱密码；CLI 采用受支持的设备授权/浏览器确认流程。不自行接收用户密码来绕过登录。邮箱 OTP、Google、完整登录配置管理保留后续切片；用户名别名不是首片前提。
 - WorkOS 默认邮件替代原 Cloudflare 发 OTP 的默认假设；若后续仍要求 Cloudflare 发信，单独验证自定义邮件集成。当前不配置或发送邮件。
-- 实例管理员通过部署者受保护的初始化动作绑定到明确的 WorkOS user id，不能由首位公网注册者抢占。部署者可恢复管理资格；账号恢复交给 WorkOS，不重新实现密码重置。
+- 首个应用用户由部署者指定目标邮箱，在 WorkOS 关闭公开注册并读回后，取得无 Organization/角色的应用邀请。本人接受并认证后，部署 Agent 按 invitation_id 查询 accepted_user_id，再查询同一环境的实际用户，核对邮箱、email_verified=true 且未禁用/封禁。应用邀请可能由其他邮箱接受，邀请收件地址或 Dashboard 管理身份不能替代实际用户核验；不匹配即停止，不自动改绑。已有目标应用用户可经相同身份核验复用。
+- 首次管理员绑定仅由部署者 Cloudflare 管理权限下的受保护部署命令完成：再次核对实例、D1、WorkOS 环境和用户，在同一 D1 原子操作中写入 active instance_admin 与固定首次初始化 management_operation 回执。固定键每实例唯一，同键不同目标冲突；无匿名认领接口或新 bootstrap token，不增加用户/邀请表。
+- 中断重试以 WorkOS/D1 权威状态为准：有效待接受邀请复用，发送结果未知先查询，不盲目重发；过期需明确替换/重发，撤销不自动恢复。已接受则重新核验；绑定结果未知则读回回执与管理员。相同用户且 active 返回成功，不同用户或已撤销/失活则停止并转独立授权恢复。首次回执须在管理员撤销后保留，不能因 active 管理员为空重新开放初始化。
+- 接受邀请只建立应用身份，不授予 TOB 管理权限，也不完成手机登录。管理员绑定后，手机/CLI 另行启动正常登录，服务端核对 active instance_admin；无组织管理员可进入并创建自己的组织。无匹配本机登录事务的邀请回调不能完成 PKCE 登录。账号恢复交给 WorkOS，管理员恢复单独授权，不由普通初始化重试执行。
 - 注册、实例准入、创建组织、组织内建群是不同判断。T1 固定 registration_mode=admin_only、org_creation_mode=admin_only，WorkOS 关闭公开注册。仅本实例 instance_admin 中 status=active 的已初始化 Human 可进入业务入口或建组织；有效 WorkOS token、邀请记录或普通组织成员资格均不能替代此条件。缺少初始化/政策记录或无法确认管理员状态时拒绝业务管理；匿名发现/健康信息不授予业务访问。邀请其他 Human 的后续切片再扩展准入规则，不新增用户/邀请账本或通用策略编辑器。
 - WorkOS 新环境默认 member 不代表内置 owner。自部署必须建立/核验固定单角色 owner/member，member 保持默认，不自动升权；doctor 检查角色、单角色模式及映射是否匹配，不匹配时阻止建组织。组织创建者显式获得 owner，未知角色默认拒绝有权限要求的操作。实例管理员资格只授予 T1 准入、建组织及实例管理权限，不自动赋予其他组织的业务访问或任意 Agent 工作权。组织访问仍要求该组织的 active membership，组织管理还要求 owner；member 无组织管理权。
 - Worker 使用服务器密钥调用 WorkOS 管理 API 前，仍检查当前 Human 的应用权限。群 token 不能换取此能力。所有已交付管理能力都有独立服务 CLI；本地 Bot 操作有 DeepSeekBot CLI。
@@ -98,9 +101,9 @@ flowchart TB
 | --- | --- | --- |
 | WorkOS 受管实体 | User、Session、Organization、Membership、Invitation | 云端身份权威；不在应用复制成可独立修改的认证表 |
 | D1 / instance_config | singleton_id PK、registration_mode、org_creation_mode、config_version | T1 两项模式固定 admin_only；缺失/非法值拒绝业务管理；不保存 API key 明文 |
-| D1 / instance_admin | workos_user_id PK、granted_by、granted_at、status | 实例超级管理员，区别于组织 owner |
+| D1 / instance_admin | workos_user_id PK、granted_by、granted_at、status | 实例超级管理员，区别于组织 owner；首次授予与初始化回执原子写入，普通重试不恢复失活资格 |
 | D1 / organization_link | org_id PK、workos_org_id UQ、lifecycle、created_at | 实例内稳定组织映射；creating/active/disabled |
-| D1 / management_operation | operation_id PK、actor_id、kind、payload_hash、target_id、state、updated_at | 创建组织/映射的重试状态；同键不同载荷冲突 |
+| D1 / management_operation | operation_id PK、actor_id、kind、payload_hash、target_id、state、updated_at | 创建组织/映射重试及首次管理员初始化回执；初始化使用每实例固定键，记录已核验目标与结果，与 instance_admin 原子写入；撤销管理员后仍保留，同键不同载荷冲突 |
 | D1 / identity_event_inbox | event_id PK、event_type、resource_id、org_id 可空、status、received_at、attempt_count | 事件去重、可靠投递与错误恢复；只保留所需脱敏字段 |
 | D1 / identity_sync_checkpoint | stream_id PK、cursor、last_success_at | 补漏进度；已持久接收后才推进，不因投递失败丢事件 |
 | Org DO / org_config | org_id PK 单行、status、policy_json、version | 组织业务设置；不复制成员权威 |
@@ -205,7 +208,7 @@ flowchart TB
 ### T1 剩余五项缺口与完成门槛
 
 1. **配置执行与重跑。** 锁定正确项目/环境/application；关闭 signup，明确创建 owner，保持 member 默认和单角色；登记精确回调并确定退出返回地址。写后读回、重复执行不重复创建且不覆盖无关配置；未知角色不获得权限，已有内置 admin 无需删除。注册/角色/回调已有自动化接口，不再默认归为人工步骤。
-2. **首个应用用户到管理员。** 关闭注册后准备无组织邀请，由本人接受并认证；查询实际 AuthKit 用户、核对目标环境与明确身份，再从受保护管理面绑定 active instance_admin。Dashboard 管理身份不是应用用户；邀请目标邮箱本身不授予管理员。验证无组织初始登录及邀请返回路径，不把接受邀请误作已有手机 PKCE 事务。
+2. **首个应用用户到管理员（方案已确认，运行验收待完成）。** 关闭注册并读回后发送无组织邀请；本人接受后按 invitation_id 读取 accepted_user_id，再核验同一环境实际用户的目标邮箱、email_verified 与可用状态。部署者 Cloudflare 管理权限下，以同一 D1 原子操作绑定 active instance_admin 和固定首次初始化回执。重试先读权威状态；不重复发信、不覆盖其他用户、不恢复已撤销管理员。邀请返回与正常手机/CLI 登录分开；详见 T1 §4。邀请接受、真实用户核验、原子写入与中断/并发恢复尚未运行验证。
 3. **可信配置导入（方案已确认，运行验收待完成）。** 部署 Agent 从两个已认证控制面核验后，输出 tob-instance.json 及承载同一配置全文的本地二维码；手机从可信部署电脑扫码，CLI 读取文件，共用校验和 discovery 比对。关键配置变化后停止联网操作，重新核验、导出、导入并登录；具体流程见 T1 §5–6。设计确认不等于导入、扫码或重新核验已实现，不以预置配置替代验收。
 4. **秘密与 Cloudflare 交接。** 受保护取得运行 API key/Webhook secret 并注入 Worker Secrets；记录资源 ID，区分 D1 SQL、DO namespace 生命周期和每个 Org DO 的迁移；配置事件端点 / Cron 并处理中断重跑。初始化前业务关闭，未确认资源不得盲目重建。此次未验证此路径，MCP key metadata 不等于已取得运行秘密。
 5. **完整运行验收。** 手机登录并建组织 → CLI 独立登录看到同一组织 → 刷新、组织切换、退出与撤权；真实事件签名、补漏/重试、WorkOS/D1/Org DO 中途失败恢复和 Human QA 均须有证据。管理端读取、dry-run、fixture 都不能替代。
@@ -221,6 +224,7 @@ flowchart TB
 - 手机沿用现有群管理网络调用及错误状态测试，另做真实手机无 Host 登录、建群、凭证管理、完整协作和回前台恢复。Node/Web 测试不代替原生回调与安全存储验证。
 - T1 必须分开报告读取成功、dry-run 成功、持久化写入并读回、完整运行验收四类证据；前两类已验证的部分不勾选成 T1 交付完成，剩余五项缺口全部关闭后才可验收。
 - T1 部署验收以 Agent 可重复执行的 CLI/MCP 路径为主，列出 Human 必做与工具不支持的人工项；核验账号/环境、秘密不泄漏、重复运行不误建/误授予及配置读回。由 Agent 从已认证控制面核验的实例同样符合可信前提；仅目标 discovery 自述仍不符合。
+- T1 首次管理员验收：关闭注册后的无组织邀请、accepted_user_id 与真实用户匹配、D1 固定首次回执与管理员原子写入、发送/写入响应丢失、并发不同目标、撤销后重跑均需验证；不能误发邀请、错绑、覆盖或重新授予已撤权限。邀请接受不完成手机登录，绑定后无组织管理员正常登录建组织。
 - T1 配置导入必测：全新手机扫码和 CLI 文件导入、相同配置重复导入、无凭证 discovery 比对、错误/不兼容配置拒绝、关键配置漂移阻断、重新核验导入后重新登录；名称变更和公开配置不变的升级不要求重登，实例 ID 变更另建实例。失败导入不覆盖原配置，旧凭证/缓存/待发送内容不迁移到新目标；不以预置配置跳过首次导入。
 - T1 必测：未核验地址、冒用其他实例 Client ID、核验后配置漂移均在登录/token 发送前被拒绝；未初始化、非 active 管理员及仅有有效 WorkOS token 的用户不能进入业务或建组织；owner 缺失/映射不符不能建组织；跨组织访问仍需 active membership。正式与开发 OAuth 回调精确匹配，旧导航回调不得完成云登录。
 - 每票有自动回归、可运行 CLI 路径、可操作界面与 Human QA。先验证前一条用户行为再扩展下一条，不先交付整层数据库或只交付无后端 UI。
