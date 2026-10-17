@@ -2,7 +2,7 @@
 
 Canonical delivery specification: https://github.com/BotHarness/tob/issues/1
 
-状态：已授权启动 T1 的最小本地增量并配置、验证 UAT 部署。当前已实现健康/版本、D1 与 Org DO 迁移、关闭的业务入口及手动 UAT 工作流；完整手机/CLI 认证与组织路径仍待实现，T1 未完成，T2–T5 与 Prod 未启动。当前证据见 [首个增量运行记录](uat-first-increment.md)。
+状态：已授权启动 T1 的最小本地增量并配置、验证 UAT 部署。当前已实现健康/版本、D1 与 Org DO 迁移、关闭的业务入口及手动 UAT 工作流；完整手机/CLI 认证与组织路径仍待实现，T1 未完成，T2–T5 与 Prod 未启动。首个 UAT 部署与同 SHA 重跑已通过，证据见 [首个增量运行记录](uat-first-increment.md)。
 
 已单独授权交付 [首次部署人工准备向导](https://github.com/BotHarness/tob/blob/main/scripts/prepare-first-deploy.sh) 与 [说明](https://github.com/BotHarness/tob/blob/main/docs/first-deploy-preparation.md)：仅本机步骤引导、目标记录与隐藏输入 API key。准备完成不代表控制面授权、凭证核验、Worker Secrets 注入或部署完成；该向导本身仍只做准备；当前服务增量范围见上述运行记录。
 

@@ -8,7 +8,16 @@ Local evidence: generated binding types and TypeScript pass, 4 workerd integrati
 
 Cloud preparation: the human-supplied CI token was verified active; the selected account, D1 and Worker inventory were read. A separate UAT D1 was provisioned and read back. GitHub Environment `uat` has only a `main` branch deployment policy, five public target variables, and `CLOUDFLARE_API_TOKEN`. This is a branch restriction, not a human-review gate. The token has account-level Worker/D1 permissions, not resource-level isolation; target checks are additional software safeguards. No production environment/resources/secrets were prepared.
 
-UAT runtime evidence must be recorded with its exact commit and workflow run after deployment; preparation and CI alone do not prove runtime behavior.
+### UAT runtime evidence — 2026-10-18 JST
+
+Deployed source: `a5990f5b3925d05c0f4eb12b9aa0820e981a99e9` ([PR #7](https://github.com/BotHarness/tob/pull/7)). [First deployment](https://github.com/BotHarness/tob/actions/runs/39043544273/attempts/1) and [same-SHA repeat](https://github.com/BotHarness/tob/actions/runs/39043544273/attempts/2) both passed their check/deploy/smoke jobs. The repeated D1 migration command returned `[]` (nothing newly applied).
+
+- Independent CLI readback returned the exact UAT release and instance with `ready=true`, D1 schema 1, Org schema 1 and `businessEnabled=false`.
+- Both smoke runs confirmed organization creation returns `503 INSTANCE_NOT_INITIALIZED`.
+- Cloudflare settings readback confirmed the intended D1 binding and SQLite Org namespace binding. SQL readback found one migration, zero administrators and zero instance policy rows; no business initialization occurred.
+- These runs prove initial deployment and same-version replay. They do not prove forced interruption recovery, destructive rollback, WorkOS login, phone behavior or the completed T1 path. UAT remains on the source SHA above; subsequent documentation-only commits do not change the deployed code.
+
+Health endpoint: [UAT health](https://tob-service-uat.yangmufeng233.workers.dev/healthz). This is a deployment probe, not a chat application.
 
 ## Human secret handoff
 

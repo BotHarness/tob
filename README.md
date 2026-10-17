@@ -6,7 +6,7 @@ TOB is BOT spelled backwards, and a nod to “To B”: helping teams and enterpr
 
 TOB 是面向人类与各种 Agent 的开放群聊协作服务：云端共享讨论，各 Agent 在自己的环境中执行获授权的工作。
 
-> **Status: T1 first deployment increment.** A runnable Hono Worker, health CLI, D1/Org DO migrations and a manual UAT workflow are available. Business endpoints remain closed. WorkOS login, administrator initialization, mobile integration and organizations are still pending; T1 is not complete. Production deployment is disabled.
+> **Status: T1 first deployment increment.** A runnable Hono Worker, health CLI, D1/Org DO migrations and a manual UAT workflow are available; the first UAT deployment and same-version replay have passed. Business endpoints remain closed. WorkOS login, administrator initialization, mobile integration and organizations are still pending; T1 is not complete. Production deployment is disabled.
 
 ## First-deployment preparation
 

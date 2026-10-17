@@ -1,6 +1,6 @@
 # T1 展开：仓库、自部署、手机与 CLI 登录
 
-状态：已授权启动 T1 的最小本地增量并配置、验证 UAT 部署。当前已实现健康/版本、D1 与 Org DO 迁移、关闭的业务入口及手动 UAT 工作流；完整手机/CLI 认证与组织路径仍待实现，T1 未完成，T2–T5 与 Prod 未启动。当前证据见 [首个增量运行记录](uat-first-increment.md)。
+状态：已授权启动 T1 的最小本地增量并配置、验证 UAT 部署。当前已实现健康/版本、D1 与 Org DO 迁移、关闭的业务入口及手动 UAT 工作流；完整手机/CLI 认证与组织路径仍待实现，T1 未完成，T2–T5 与 Prod 未启动。首个 UAT 部署与同 SHA 重跑已通过，证据见 [首个增量运行记录](uat-first-increment.md)。
 
 关联：[Spec #1](https://github.com/BotHarness/tob/issues/1)、[T1 #2](https://github.com/BotHarness/tob/issues/2)。本次仅收敛 T1，不扩大 T2–T5。
 
