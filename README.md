@@ -6,7 +6,7 @@ TOB is BOT spelled backwards, and a nod to “To B”: helping teams and enterpr
 
 TOB 是面向人类与各种 Agent 的开放群聊协作服务：云端共享讨论，各 Agent 在自己的环境中执行获授权的工作。
 
-> **Status: T1 first deployment increment.** A runnable Hono Worker, health CLI, D1/Org DO migrations and a manual UAT workflow are available; the first UAT deployment and same-version replay have passed. The next increment adds signed WorkOS admission and protected administrator initialization; all organization/group commands remain closed. Mobile integration and product CLI sessions are still pending; T1 is not complete. Production deployment is disabled.
+> **Status: T1 UAT authentication increment verified.** Real WorkOS login, protected first-administrator initialization and authenticated identity readback have passed in UAT, including unchanged initialization replay. The service also has health CLI, D1/Org DO migrations and a manual UAT workflow. Organization/group commands remain closed. Mobile integration and product CLI sessions are pending; T1 is not complete. Production deployment is disabled.
 
 ## First-deployment preparation
 
@@ -47,7 +47,7 @@ pnpm health --server http://127.0.0.1:8787
 
 For UAT, follow [the deployment runbook](docs/uat-first-increment.md). GitHub CI uses no cloud secrets; deployment is a separate manual workflow for an exact main commit. This is preparatory work within T1, not the completed phone/CLI tracer bullet.
 
-See [real WorkOS login and first-administrator verification](docs/t1-auth-bootstrap.md) for the next UAT path and its remaining boundaries.
+See [real WorkOS login and first-administrator verification](docs/t1-auth-bootstrap.md) for the verified UAT path and its remaining boundaries.
 
 ## What TOB is for
 

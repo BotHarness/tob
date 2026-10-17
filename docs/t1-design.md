@@ -1,8 +1,8 @@
 # T1 展开：仓库、自部署、手机与 CLI 登录
 
-状态：已授权启动 T1 的最小本地增量并配置、验证 UAT 部署。当前已实现健康/版本、D1 与 Org DO 迁移、关闭的业务入口及手动 UAT 工作流；完整手机/CLI 认证与组织路径仍待实现，T1 未完成，T2–T5 与 Prod 未启动。首个 UAT 部署与同 SHA 重跑已通过，证据见 [首个增量运行记录](uat-first-increment.md)。
+状态：T1 的部署与 WorkOS 登录/首个管理员初始化增量已在真实 UAT 验证。健康/版本、D1 与 Org DO 迁移、JWT 校验、受保护的原子初始化和 `/api/me` 已实现；组织/群命令仍关闭。手机、产品 CLI 会话及组织路径仍待完成，T1 保持开放，T2–T5 与 Prod 未启动。
 
-2026-10-18 追加范围：已授权 UAT WorkOS 邀请/登录与首个管理员初始化；实施合同、原子写入、凭证边界与待验收项见 [登录与初始化切片](t1-auth-bootstrap.md)。手机与产品 CLI 随后接入，Prod 不变。
+2026-10-18 UAT 证据：有效身份初始化前拒绝 → 已接受邀请的实际用户原子绑定 → 同一身份 `/api/me` 成功；同目标重试不改写授权。准确部署 SHA、测试范围、首次失败与剩余门槛见 [登录与初始化切片](t1-auth-bootstrap.md#evidence-and-remaining-boundaries)。手机与产品 CLI 随后接入，Prod 不变。
 
 关联：[Spec #1](https://github.com/BotHarness/tob/issues/1)、[T1 #2](https://github.com/BotHarness/tob/issues/2)。本次仅收敛 T1，不扩大 T2–T5。
 
