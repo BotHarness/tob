@@ -122,3 +122,35 @@ it("failure after policy insertion rolls back policy, administrator and receipt 
   await expect(initialize()).rejects.toThrow();
   for (const table of ["instance_admin", "instance_config", "management_operation"]) expect(await env.INSTANCE_DB.prepare(`SELECT count(*) AS n FROM ${table}`).first("n")).toBe(0);
 });
+
+it("publishes configured connection identity, independent of request host or caller input", async () => {
+  const r = await request("/.well-known/open-cloud-groups", { headers: { "X-Forwarded-Host": "attacker.example" } });
+  expect(r.status).toBe(200);
+  const body = await r.json() as { server: string; auth: { clientId: string; mobileRedirectUris: string[] } };
+  expect(body.server).toBe("https://example.test");
+  expect(body.auth.clientId).toBe("client_local");
+  expect(body.auth.mobileRedirectUris).toEqual([]);
+  expect(JSON.stringify(body)).not.toContain("local-test-secret");
+});
+
+it("logout revokes only the signed current session, even without business admission", async () => {
+  const revokeCalls: unknown[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (String(url) === "https://api.workos.com/sso/jwks/client_local") return Response.json({ keys: [publicKey] });
+    expect(String(url)).toBe("https://api.workos.com/user_management/sessions/revoke");
+    expect(init?.redirect).toBe("error");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer local-test-secret");
+    revokeCalls.push(JSON.parse(String(init?.body))); return new Response(null, { status: 200 });
+  });
+  expect((await request("/api/auth/logout", { method: "POST", body: '{"session_id":"session_victim"}' })).status).toBe(401);
+  expect(revokeCalls).toEqual([]);
+  const r = await request("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + await token() }, body: '{"session_id":"session_victim"}' });
+  expect(await r.json()).toEqual({ remoteRevoked: true });
+  expect(revokeCalls).toEqual([{ session_id: "session_fixture" }]);
+});
+
+it("logout provider failure is never reported as revoked", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async url => String(url).includes("/jwks/") ? Response.json({ keys: [publicKey] }) : new Response(null, { status: 503 }));
+  const r = await request("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + await token() } });
+  expect(r.status).toBe(503); expect(await r.json()).toEqual({ error: { code: "LOGOUT_UNCONFIRMED" } });
+});

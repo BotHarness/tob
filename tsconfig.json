@@ -19,6 +19,7 @@
   },
   "include": [
     "apps/**/*.ts",
+    "packages/**/*.ts",
     "tools/**/*.ts",
     "*.ts",
     "tests/**/*.ts",

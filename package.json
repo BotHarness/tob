@@ -14,7 +14,8 @@
     "types": "cf workers types",
     "test:wizard": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'",
     "db:migrate:local": "cf d1 migrations apply 00000000-0000-4000-8000-000000000001 --local --persist-to .wrangler/state --dir apps/service/db/d1/migrations",
-    "health": "node apps/cli/tob.mjs health"
+    "health": "node apps/cli/tob.mjs health",
+    "tob": "node apps/cli/tob.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",

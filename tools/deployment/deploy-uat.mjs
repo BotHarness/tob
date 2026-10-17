@@ -34,6 +34,11 @@ try {
   const subdomain = await response.json();
   assert.equal(subdomain.success, true, 'SUBDOMAIN_READ_FAILED');
   assert.equal(origin.origin, `https://${target.workerName}.${subdomain.result.subdomain}.workers.dev`, 'ORIGIN_MISMATCH');
+  const settingsResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${target.accountId}/workers/scripts/${target.workerName}/settings`, { headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` }, redirect: 'error', signal: AbortSignal.timeout(10000) });
+  assert.ok(settingsResponse.ok, 'SETTINGS_READ_FAILED');
+  const settings = await settingsResponse.json();
+  assert.equal(settings.success, true, 'SETTINGS_READ_FAILED');
+  assert.ok(settings.result.bindings.some(b => b.name === 'WORKOS_API_KEY' && b.type === 'secret_text'), 'MISSING_WORKOS_SECRET');
   // Build before the first mutation. Do not let cf provision an unresolved D1.
   execFileSync(cf, ['build', '--mode', 'uat'], { stdio: 'inherit' });
   const built = JSON.parse(readFileSync('.cloudflare/output/v0/workers/default/worker.config.json', 'utf8'));
