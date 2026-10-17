@@ -32,9 +32,11 @@ Logout attempts remote revocation using the existing service endpoint and remove
 - [x] Source contract rejects foreign/duplicate callbacks, local inheritance and Prod deployment.
 - [x] WorkOS Staging exact callback mutation and independent readback succeeded on 2026-10-18 JST; first callback is reported as default by WorkOS.
 - [x] Local service checks: typecheck, 13 workerd tests and 18 Node tests pass.
-- [ ] Exact companion SHA deployed to UAT; public configuration exported after control-plane readback; QR generated.
+- [x] Exact companion SHA `1ad3e6605a02965b3f9079f302ced02ca4a8f4c6` deployed to UAT; [workflow and smoke passed](https://github.com/BotHarness/tob/actions/runs/39053334521). Authenticated settings, OIDC and instance discovery matched; public configuration exported and offline QR generated.
 - [ ] Development build installed; no-Host QR import, system-browser return, `/me`, refresh/rotation, cold restart and logout verified on a physical phone.
 - [ ] Cancellation, offline/local-only logout, configuration replacement, secure-storage failure and default/intermediate/maximum text in light/dark verified on native surfaces where applicable.
 - [ ] WorkOS session readback confirms phone session revoked and independent CLI session unchanged; Android separately qualified.
 
 Source tests and a successful UAT deployment do not satisfy the unchecked native gates. T1 still needs organization creation/list/switch across phone and CLI, owner/member boundaries and creation retry, signed identity events/reconciliation and revocation propagation, failure recovery, and complete Human QA. No T2, Prod or mobile store release is authorized by this increment.
+
+Mobile [Draft PR #2103](https://github.com/BotHarness/DeepSeekBot/pull/2103), head `a0b2919072af8fee62d8bb5fbb402fc52fb0d852`: full CI, mobile typecheck, 550 passing/8 skipped mobile tests, Expo Doctor 20/20 and both JS exports passed. Shared native window transferred to this task; phone build preparation in progress. No native/Human gate is marked passed. Documentation changes do not imply a new service deployment.
