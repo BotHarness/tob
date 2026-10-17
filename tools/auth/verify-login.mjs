@@ -19,6 +19,7 @@ try {
   if (health.environment !== 'uat' || health.instanceId !== target.INSTANCE_ID) throw new Error('INSTANCE_MISMATCH');
   let session;
   if (mode === 'login') {
+    profile.requireAbsent('uat-login-session.json');
     phase = 'device-authorization';
     const device = await jsonRequest('https://api.workos.com/user_management/authorize/device', form({ client_id: target.WORKOS_CLIENT_ID }));
     if (new URL(device.verification_uri).origin !== authHost.origin || typeof device.device_code !== 'string' || !Number.isFinite(device.interval) || !Number.isFinite(device.expires_in)) throw new Error('INVALID_DEVICE_RESPONSE');

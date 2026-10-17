@@ -25,6 +25,12 @@ export function privateProfile(path) {
       }
       return values;
     },
+    requireAbsent: name => {
+      if (!/^[a-z0-9.-]+$/.test(name)) throw new Error('INVALID_FILE');
+      try { lstatSync(join(path, name)); }
+      catch (error) { if (error.code === 'ENOENT') return; throw error; }
+      throw new Error('EXISTING_SESSION_REQUIRES_EXPLICIT_CLEANUP');
+    },
     createJson: (name, value) => {
       if (!/^[a-z0-9.-]+$/.test(name)) throw new Error('INVALID_FILE');
       writeFileSync(join(path, name), JSON.stringify(value), { mode: 0o600, flag: 'wx' });
