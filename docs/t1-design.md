@@ -1,6 +1,6 @@
 # T1 展开：仓库、自部署、手机与 CLI 登录
 
-日期：2026-10-17。状态：Human 已认可的细化方案；TOB 公开规划仓库与任务迁移已获授权，未实现、未部署。
+日期：2026-10-17。状态：Human 已认可的细化方案；TOB 公开规划仓库与任务迁移已获授权，未实现、未部署 TOB 服务；已另获授权准备 WorkOS TOB staging 并完成 MCP 核验。
 
 关联：[Spec #1](https://github.com/BotHarness/tob/issues/1)、[T1 #2](https://github.com/BotHarness/tob/issues/2)。本次仅收敛 T1，不扩大 T2–T5。
 
@@ -98,17 +98,17 @@ WorkOS OAuth 设置不假定能靠我们的环境变量自动创建：Google 后
 
 - WorkOS MCP 继承授权者的 Dashboard 权限，可能被团队禁止写入或访问生产；它不能修改限制自身的 MCP 设置。
 - MCP 不返回秘密，也不创建/轮换 API keys、OAuth client secrets 等凭证。CLI 中组织 API key 管理不能证明可无初始凭证取得环境服务端 API key。首次运行秘密交付保留必要人工路径。
-- 关闭公开注册、single-role 模式与默认 member 的具体自动化操作尚未核实。实施时先检查当前官方 CLI/MCP 支持；未开放则列为明确人工步骤，完成后读回核验，不能跳过检查或使用未公开接口。
+- 已通过真实 MCP 读取注册、角色与回调配置，发现 updateAuthkitSettings、createRole、updateRoleConfig 和回调/退出设置接口。注册当前开启，默认 member/单角色已符合，owner 缺失。关闭注册/角色配置不再默认列为人工；持久化写入与读回仍待实施验证。详见下方证据表。
 - Human 在供应商页面接受首次邀请/验证身份、注册、OAuth/MFA 是必要交互；角色创建、回调登记、资源创建与部署不是默认人工项。不承诺目前所有环境都只需注册和 OAuth。
 - 控制面授权、TOB 服务端运行秘密、手机/CLI 产品会话是三类不同凭证。初始化恢复只能恢复实例管理员资格，不能绕过 WorkOS 账号认证。
 
 ### 执行顺序
 
 1. Human 完成账号准备、目标选择和工具授权；Agent 查询并确认账号/环境、权限与工具版本。
-2. Agent 发现官方工具能力，准备配置与最小必要人工项；可自动化的 WorkOS 设置、首个用户邀请准备与精确回调由工具处理。Human 按需完成供应商身份验证或未开放设置。
-3. Agent 通过 cf 部署 Worker/D1/Org DO、迁移、Secrets 与 Cron。注册/建组织政策固定 admin_only，初始化前拒绝业务访问；秘密缺失等未完成项明确阻止继续。
+2. Agent 按项目/environment_id/application 锁定目标并发现实时工具合同；以最小差异关闭 signup、建立 owner、保持 member 默认和单角色、准备精确回调与选定退出地址，写后读回。准备无组织邀请，由本人接受并认证，查询实际 AuthKit 用户核验身份；Dashboard OAuth 身份和邀请目标邮箱均不能替代该 user_id。邀请返回路径不能假定已有手机 PKCE 事务。
+3. Agent 通过 cf 解析/创建资源并记录非秘密资源 ID；D1 SQL 迁移、SQLite DO namespace/binding 生命周期和首次 Org DO 迁移分别验证，部署 Worker、Secrets 与 Cron。运行 API key/Webhook secret 经受保护路径交接，不经模型；资源或秘密缺失时停止。注册/建组织政策固定 admin_only，初始化前拒绝业务访问。
 4. Agent 用已授权管理面核验指定 WorkOS user_id 并执行幂等管理员初始化。不是匿名公网“第一个登录者成为管理员”。
-5. Agent 从两个已认证控制面核验并固定连接配置；不能只信目标实例 discovery/二维码。配置变化仍须按同一路径重新核验。
+5. Agent 从两个已认证控制面核验并输出不含秘密的固定连接配置；为全新手机/CLI 明确一种受控导入路径，并验证替换与配置漂移拒绝。不能只信目标实例 discovery/二维码，也不能以预置测试配置跳过交付；配置变化仍须按同一路径重新核验。
 6. Human 分别在手机/CLI 登录；管理员运行 doctor 后通过同一业务 API 创建/查看自己的组织。重复运行部署检查和初始化不应重复建资源、覆盖无关配置或扩大权限；无法确认的中途结果先核对。
 
 ```mermaid
@@ -127,7 +127,35 @@ flowchart TB
   B --> C --> D --> E
 ```
 
-以上是待实现的自动化分工；没有执行供应商登录、配置、发信或部署。依据：[cf](https://developers.cloudflare.com/cf/)、[cf 部署](https://developers.cloudflare.com/cf/projects/)、[WorkOS CLI](https://workos.com/docs/cli)、[WorkOS MCP](https://workos.com/docs/mcp)。
+以上部署流程仍待实现。已完成供应商 MCP OAuth、TOB staging 项目准备、配置读取和无持久化回调 dry-run；未执行本流程的配置写入、发信或 TOB 部署。依据：[cf](https://developers.cloudflare.com/cf/)、[cf 部署](https://developers.cloudflare.com/cf/projects/)、[WorkOS CLI](https://workos.com/docs/cli)、[WorkOS MCP](https://workos.com/docs/mcp)。
+
+### 真实 WorkOS MCP 核验：2026-10-17
+
+范围是 BotHarness Team 的 TOB 项目、Staging；通过真实 OAuth/MCP 查询。公开记录仅保留脱敏结果，实际资源 ID、账号信息与秘密留在部署者本机。以下是核验时点的观察，不是目标配置已完成的声明。
+
+| 项目 | 真实结果 | 证据等级与剩余验证 |
+| --- | --- | --- |
+| 身份与目标 | MCP OAuth 成功；管理角色 ADMIN；TOB 仅有 Staging，同一 Team 另有默认项目的同名 Staging | **读取已验证**；每次按项目、environment_id 和 application/Client ID 锁定目标，不能只按环境名或默认上下文 |
+| 注册与登录开关 | allowSignUp=true；密码开启、Magic Auth 关闭 | **读取及管理合同已验证**：authkitSettings / updateAuthkitSettings；关闭注册的持久化更新和读回待验证。T1 仍只要求一种托管登录方式 |
+| 角色 | 现有 member/admin，没有 owner；默认 member，multipleRolesEnabled=false | **读取及管理合同已验证**：roles 返回角色与 roleConfigForEnvironmentV2，createRole / updateRoleConfig 可发现；创建 owner 与写后读回待验证。不能把内置 admin 自动映射为 owner |
+| 回调与退出 | 回调、logout URI、web origins 均为空；环境默认应用及 application 级设置接口可发现 | **读取及管理合同已验证**；全量列表更新须先读合并并保留既有 ID，持久化写入与重跑待验证；具体退出返回 URI 仍需确定 |
+| 手机回调校验 | 两条计划中的正式/开发 OAuth URI 经 setAuthkitApplicationRedirectUris(dryRun=true) 返回 RedirectUrisSet；随后重新查询回调仍为空 | **服务端 dry-run 已验证，未保存**；不等于原生回调、PKCE、CLI 登录或任何真实会话已通过 |
+| 应用用户与事件 | AuthKit 应用用户数为 0；Webhook 列表为空 | **读取已验证**；初始应用用户、实例管理员绑定、事件端点和签名投递仍未完成 |
+| 项目自动创建 | createProjectWithNewEnvironments 提供 name 与 includeProductionEnvironment 参数 | **操作合同已发现，MCP 创建未实测**；现有 TOB staging 此前通过 Dashboard 创建，不重复创建 |
+
+此次 MCP 核验仅执行读取、操作合同发现和一次明确 dryRun=true 的回调校验，没有持久化配置、发邀请、取出秘密或部署。管理角色/操作目录可见不能证明所有写操作有权限且成功；dry-run 返回的候选 ID 不作为真实资源 ID 保存。实际读取操作为 whoami、authkitSettings、defaultAuthkitApplication、authkitApplications、roles、redirectUris、logoutUris、userCount、webhookEndpoints，环境查询均显式限定 TOB Staging；操作合同由 list_operations 发现。回调 dry-run 输入为 `ai.botharness.deepseekbot:/oauth2redirect`（候选默认）和 `ai.botharness.deepseekbot.dev:/oauth2redirect`，之后通过 redirectUris 确认仍为空。
+
+部署工具以实时发现的操作合同为准，不硬编码旧源码快照中的 userlandSettings/updateUserlandSettings 名称；当前为 authkitSettings/updateAuthkitSettings。更新仅提交必要字段，不能把完整读取对象原样写回：例如 isEmailVerificationRequired 可读不意味着可写，其写入受账户能力限制。未实测的写权限保留待验证。
+
+### T1 剩余五项缺口与完成门槛
+
+1. **配置执行与重跑。** 锁定正确项目/环境/application；关闭 signup，明确创建 owner，保持 member 默认和单角色；登记精确回调并确定退出返回地址。写后读回、重复执行不重复创建且不覆盖无关配置；未知角色不获得权限，已有内置 admin 无需删除。注册/角色/回调已有自动化接口，不再默认归为人工步骤。
+2. **首个应用用户到管理员。** 关闭注册后准备无组织邀请，由本人接受并认证；查询实际 AuthKit 用户、核对目标环境与明确身份，再从受保护管理面绑定 active instance_admin。Dashboard 管理身份不是应用用户；邀请目标邮箱本身不授予管理员。验证无组织初始登录及邀请返回路径，不把接受邀请误作已有手机 PKCE 事务。
+3. **可信配置导入。** 已认证控制面核验后输出不含秘密的固定配置，明确全新手机/CLI 的一种受控导入路径，以及替换、配置漂移拒绝行为。不能以预置测试配置跳过这一交接，不新增信任注册中心或另一种认证协议。
+4. **秘密与 Cloudflare 交接。** 受保护取得运行 API key/Webhook secret 并注入 Worker Secrets；记录资源 ID，区分 D1 SQL、DO namespace 生命周期和每个 Org DO 的迁移；配置事件端点 / Cron 并处理中断重跑。初始化前业务关闭，未确认资源不得盲目重建。此次未验证此路径，MCP key metadata 不等于已取得运行秘密。
+5. **完整运行验收。** 手机登录并建组织 → CLI 独立登录看到同一组织 → 刷新、组织切换、退出与撤权；真实事件签名、补漏/重试、WorkOS/D1/Org DO 中途失败恢复和 Human QA 均须有证据。管理端读取、dry-run、fixture 都不能替代。
+
+五项保留在 T1 内，不另拆横向基础票，不提前启动 T2–T5。必要人工仍是注册、目标/授权选择、OAuth/MFA、首次应用用户认证、产品登录确认和 Human QA；初始秘密交付自动化未证实、团队限制或生产 billing 才属于条件人工。全部实现验收仍未完成。
 
 ## 5. 连接发现与手机登录
 
@@ -207,7 +235,12 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 
 一次现场验收应能完成：新环境部署并初始化 → 无 Host 手机选择已核验实例 → 系统浏览器登录回 App → 创建组织 → CLI 独立登录看到同一组织 → 两边刷新/重启 → 切换第二个测试组织 → 退出一端不退出另一端 → 删除成员/撤销会话后请求被拒绝。
 
-附带验收条件：
+附带验收条件（全部仍待完整实现验证；上述管理端证据不代表交付完成）：
+
+- 分别列出读取、dry-run、持久化写后读回与完整运行证据，关闭上述五项缺口；未来写入均先锁定正确环境，保持无关配置并验证重跑。
+- 从 AuthKit 应用用户数为 0 的初始化路径验证实际身份；初始管理员不依赖已通过 TOB 准入才能取得身份。
+- 从全新手机/CLI 验证可信配置导入；退出返回地址明确后登记和读回，验证一端退出不影响另一端。
+- 安全交付运行秘密并记录资源 ID；分别验证 D1/DO 迁移、签名事件和中断恢复，不能将部署命令退出码视为闭环通过。
 
 - 有可重复执行的 Agent CLI/MCP 部署路径，记录版本、目标账号/环境、完成步骤和必要人工项；已支持的配置不要求 Human 重复手工操作，重复执行不误建/误授权或覆盖无关配置。
 - 注册/OAuth/MFA、首个用户接受邀请/认证及工具未开放设置清楚标注；秘密由受保护输入交付，日志与 Agent 上下文不泄密。不支持的操作必须报告并在补齐后读回核验，不能误报全自动成功。
@@ -218,7 +251,7 @@ T1 落库沿用 spec 的六张 D1 表；Org DO 先落 org_config 和 member_acce
 - 正式/开发 OAuth 回调精确匹配；旧导航回调、错误 state、过期/重放回调不能完成登录。
 - 其他 WorkOS 环境 token 被拒绝；操作重试不重复建组织；身份事件重复/乱序/暂失不恢复已撤权限。
 
-目前仅核对文档、现有配置及任务，未完成任何新运行时集成。实际待证据项：WorkOS staging 原生 PKCE、CLI 授权、公共客户端刷新/组织切换、JWT claims、事件覆盖/时延、WorkOS 创建资源幂等与本项目 Drizzle 迁移。部署/真机 QA 在获准启动后执行。
+目前已完成真实 WorkOS MCP 读取、管理合同发现及两条回调 dry-run，未完成持久化配置写入或任何新 TOB 运行时集成。实际待证据项：WorkOS staging 原生 PKCE、CLI 授权、公共客户端刷新/组织切换、JWT claims、事件覆盖/时延、WorkOS 创建资源幂等与本项目 Drizzle 迁移。部署/真机 QA 在获准启动后执行。
 
 已认可的设计方向：采用以上仓库边界；T1 仅 Worker + D1 + Org DO；手机 PKCE、CLI device flow；同一实例的一个 WorkOS application；首个管理员由部署者绑定明确 user_id。T1 仅已核验实例、active 初始化管理员准入与建组织；固定 owner/member 和独立 OAuth 回调。未新增机制，确认设计不等于启动实施。
 
