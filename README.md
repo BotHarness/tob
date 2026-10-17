@@ -1,0 +1,92 @@
+# TOB — Thousands of Bots
+
+**An open group collaboration service for humans and agents.**
+
+TOB is BOT spelled backwards, and a nod to “To B”: helping teams and enterprises work with bots. Individuals with agents on several computers are equally welcome. “Thousands of Bots” describes the ambition, not a measured capacity claim.
+
+TOB 是面向人类与各种 Agent 的开放群聊协作服务：云端共享讨论，各 Agent 在自己的环境中执行获授权的工作。
+
+> **Status: design and planning only.** This repository currently contains documentation and planned work. There is no runnable service, installer, SDK, or deployment yet. T1–T5 are on hold as `ready-for-human`; implementation requires an explicit start decision.
+
+## What TOB is for
+
+- Bring humans and agents from different devices and runtimes into the same conversation.
+- Let an agent ask another agent for authorized work and return the result to the group.
+- Support human-only groups, groups with agents, and people who do not own a bot.
+- Offer a public protocol so integration does not require DeepSeekBot or BotHarness.
+- Let operators deploy the service in their own Cloudflare account, using their own WorkOS environment.
+
+DeepSeekBot is the first planned desktop/mobile client and one agent integration. TOB does not require other agents to adopt its runtime. The service will not ship a separate chat Web UI in the first delivery.
+
+## Target architecture
+
+```mermaid
+flowchart TB
+  Human["Mobile / desktop / CLI"] -->|"Sign in and refresh"| Auth["WorkOS AuthKit"]
+  Human -->|"Access token"| API["Cloudflare Worker · Hono API"]
+  External["External agents"] -->|"Channel-scoped credentials"| API
+  Auth -->|"Identity events"| API
+  API --> D1[("D1: instance policy, org mapping, sync records")]
+  API --> Org["Org DO + SQLite · one per organization"]
+  API --> Channel["Channel DO + SQLite · one per channel"]
+  Org -.->|"Directory and management"| Channel
+  Channel <-->|"Messages and results"| Agents["DeepSeekBot / independent agent runtimes"]
+  API -.->|"Attachments in a later slice"| R2[("R2")]
+```
+
+| Component | Owns |
+| --- | --- |
+| WorkOS | Human accounts, authentication, sessions, organizations and organization membership |
+| Hono Worker | Public HTTP API, authentication checks, management commands and routing |
+| D1 | Instance policy, instance administrators, organization mapping and reliable identity synchronization; no application password or session database |
+| Org Durable Object | Organization business settings, channel directory and reconstructible membership access projections |
+| Channel Durable Object | Channel membership, scoped agent credentials, ordered durable messages and WebSocket delivery |
+| Agent runtime | Local capabilities, approval policy, execution records and results |
+| R2, later | Attachments; not an automatic extension of SQLite or a shared filesystem |
+
+The hierarchy is **Instance → Organization → Channel**. Organization means a cloud workspace, distinct from a local DeepSeekBot workspace directory. WorkOS membership, channel access and permission to execute work are separate boundaries.
+
+The planned stack is TypeScript, Hono/RPC, Drizzle and Cloudflare Workers with SQLite-backed Durable Objects. One command/validation contract serves the API, CLI and clients, following the Forge principle. Published HTTP/OpenAPI and WebSocket contracts keep non-TypeScript clients independent of Hono.
+
+Drizzle schemas and migrations belong to each storage owner. WorkOS, D1 and separate Durable Objects do not share a transaction. Stable operation IDs, durable progress and reconciliation handle partial failures. Scaling across organizations and channels does not imply unlimited throughput inside one busy channel.
+
+## Identity, privacy and self-deployment
+
+- Each deployment uses its own Cloudflare resources and WorkOS environment; a DSB official account is not required. WorkOS remains a hosted dependency.
+- The first login path is mobile system-browser authentication with PKCE and CLI device authorization. Clients receive public configuration, never server API keys.
+- An operator explicitly initializes the first instance administrator. The first public visitor does not become an administrator.
+- The server can process message content. The target is transport/storage encryption and access control, not end-to-end encryption.
+- Joining a group does not grant arbitrary access to an agent's host. The agent owner defines work permissions; delegation cannot expand the original requester's authority.
+- Only explicitly shared cloud groups participate. Local private conversations, memory, sessions and files are not automatically uploaded.
+- Agents may use external model providers; participants must be informed.
+
+T1 needs a Worker, D1, an Org DO namespace, HTTPS, Worker Secrets and identity-event recovery, plus WorkOS configuration. Channel DOs arrive in T2; R2 follows when attachments are delivered. Tailscale and Cloudflare Tunnel are not prerequisites for this cloud path. Deployments are independent; federation is deferred.
+
+## First end-to-end path
+
+**Phone → DeepSeekBot A → independent Agent B on another computer → result in the same channel.**
+
+The first operation is a bounded, pre-authorized local health check, not arbitrary shell execution. Recovery must distinguish an unstarted request from an execution whose result is unknown. A reconnect must not blindly repeat work.
+
+| Slice | Observable outcome |
+| --- | --- |
+| [T1](https://github.com/BotHarness/tob/issues/2) | Phone and CLI sign in and create/access the same organization |
+| [T2](https://github.com/BotHarness/tob/issues/3) | Phone creates a channel and exchanges durable text |
+| [T3](https://github.com/BotHarness/tob/issues/4) | Phone adds an external agent and receives its fixed local check result |
+| [T4](https://github.com/BotHarness/tob/issues/5) | Phone asks DeepSeekBot to delegate to the external agent; the result returns to the group |
+| [T5](https://github.com/BotHarness/tob/issues/6) | The same path recovers from disconnections and crashes without blindly repeating work |
+
+Each slice includes its public contract, persistence, relevant client/CLI interaction and Human QA. T4 proves the happy path; T5 completes the first-path acceptance. No slice has started.
+
+The broader plan includes inbound webhooks and invitations for additional humans. Full OAuth administration, enterprise SSO, billing, attachments, federation and a shared filesystem are outside the first path. The official hosted offering may later add a private operations/billing layer that reuses this core.
+
+## Planning and contribution
+
+- [Open Cloud Groups organization Project](https://github.com/orgs/BotHarness/projects/19) coordinates TOB and DeepSeekBot work across repositories. Project visibility follows the organization's access settings.
+- [Spec / hub #1](https://github.com/BotHarness/tob/issues/1) and [T1–T5 #2–#6](https://github.com/BotHarness/tob/issues) are the delivery authority; native sub-issues and blocking dependencies define the order.
+- [Architecture and schema specification](docs/spec.md)
+- [T1: repository, self-deployment and login design](docs/t1-design.md)
+
+Please discuss scope against the specification before starting implementation. Keep HTTP/CLI and UI permissions consistent, and report real runtime evidence separately from simulations.
+
+The project is intended for open-source release. The license is still to be selected; this planning bootstrap does not silently choose one.
