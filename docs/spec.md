@@ -6,6 +6,8 @@ Canonical delivery specification: https://github.com/BotHarness/tob/issues/1
 
 2026-10-18 UAT 证据：有效身份初始化前拒绝 → 已接受邀请的实际用户原子绑定 → 同一身份 `/api/me` 成功；同目标重试不改写授权。准确部署 SHA、测试范围、首次失败与剩余门槛见 [登录与初始化切片](t1-auth-bootstrap.md#evidence-and-remaining-boundaries)。手机与产品 CLI 随后接入，Prod 不变。
 
+2026-10-18 追加切片：已授权仅 UAT 的可信配置文件导入与正式 CLI 登录/刷新/退出；[本切片合同与验收](t1-cli-session.md)。手机/二维码和组织仍后续接入，本轮不触碰 Prod。
+
 已单独授权交付 [首次部署人工准备向导](https://github.com/BotHarness/tob/blob/main/scripts/prepare-first-deploy.sh) 与 [说明](https://github.com/BotHarness/tob/blob/main/docs/first-deploy-preparation.md)：仅本机步骤引导、目标记录与隐藏输入 API key。准备完成不代表控制面授权、凭证核验、Worker Secrets 注入或部署完成；该向导本身仍只做准备；当前服务增量范围见上述运行记录。
 
 ## Problem Statement

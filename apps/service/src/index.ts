@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { instanceAdmin, instanceConfig, managementOperation } from "../db/d1/schema";
 import { AuthenticationError, verifyHumanToken } from "./auth/workos";
+import { publicInstance } from "../../../packages/contracts/instance.ts";
 export { Org } from "./org";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -17,6 +18,20 @@ app.onError((_error, c) => {
   return c.json({ error: { code: "STORAGE_UNAVAILABLE" } }, 503);
 });
 const api = app
+  .get("/.well-known/open-cloud-groups", (c) => c.json(publicInstance({ instanceId: c.env.INSTANCE_ID, environment: c.env.DEPLOYMENT_ENV, server: c.env.PUBLIC_BASE_URL, clientId: c.env.WORKOS_CLIENT_ID, issuer: c.env.WORKOS_ISSUER, authkitDomain: c.env.WORKOS_AUTH_DOMAIN })))
+  .post("/api/auth/logout", async (c) => {
+    let identity;
+    try { identity = await verifyHumanToken(c.req.header("Authorization"), c.env.WORKOS_CLIENT_ID, c.env.WORKOS_ISSUER); }
+    catch (error) { return c.json({ error: { code: error instanceof AuthenticationError ? "UNAUTHENTICATED" : "IDENTITY_UNAVAILABLE" } }, error instanceof AuthenticationError ? 401 : 503); }
+    // Own-session cleanup is available even after business access is withdrawn.
+    // Ignore request body/user IDs: only the verified token can select a session.
+    if (!c.env.WORKOS_API_KEY) return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);
+    try {
+      const response = await fetch("https://api.workos.com/user_management/sessions/revoke", { method: "POST", headers: { Authorization: `Bearer ${c.env.WORKOS_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ session_id: identity.sessionId }), redirect: "error", signal: AbortSignal.timeout(10000) });
+      if (!response.ok) return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503);
+      return c.json({ remoteRevoked: true });
+    } catch { return c.json({ error: { code: "LOGOUT_UNCONFIRMED" } }, 503); }
+  })
   .get("/healthz", (c) => c.json({ service: "tob", environment: c.env.DEPLOYMENT_ENV, instanceId: c.env.INSTANCE_ID, releaseSha: c.env.RELEASE_SHA, businessEnabled: false }))
   .get("/readyz", async (c) => {
     const db = drizzle(c.env.INSTANCE_DB);

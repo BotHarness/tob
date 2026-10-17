@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => {
       env: {
         INSTANCE_DB: bindings.d1({ id: target.databaseId }),
         ORGS: bindings.durableObject({ worker: owner, exportName: "Org" }),
+        WORKOS_API_KEY: target.environment === "local" ? bindings.json("local-test-secret") : bindings.secret(),
+        PUBLIC_BASE_URL: bindings.json(target.publicBaseUrl),
+        WORKOS_AUTH_DOMAIN: bindings.json(target.authkitDomain),
         WORKOS_CLIENT_ID: bindings.json(target.workosClientId),
         WORKOS_ISSUER: bindings.json(target.workosIssuer),
         WORKOS_ENVIRONMENT_ID: bindings.json(target.workosEnvironmentId),

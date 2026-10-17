@@ -4,6 +4,8 @@
 
 2026-10-18 UAT 证据：有效身份初始化前拒绝 → 已接受邀请的实际用户原子绑定 → 同一身份 `/api/me` 成功；同目标重试不改写授权。准确部署 SHA、测试范围、首次失败与剩余门槛见 [登录与初始化切片](t1-auth-bootstrap.md#evidence-and-remaining-boundaries)。手机与产品 CLI 随后接入，Prod 不变。
 
+2026-10-18 追加切片：已授权仅 UAT 的可信配置文件导入与正式 CLI 登录/刷新/退出；[本切片合同与验收](t1-cli-session.md)。手机/二维码和组织仍后续接入，本轮不触碰 Prod。
+
 关联：[Spec #1](https://github.com/BotHarness/tob/issues/1)、[T1 #2](https://github.com/BotHarness/tob/issues/2)。本次仅收敛 T1，不扩大 T2–T5。
 
 ## 1. 要确认的结果
@@ -316,7 +318,7 @@ Native OAuth 必须在实际开发/发布构建验证，不能以 Expo Go 或网
 
 ## 6. CLI 登录
 
-拟定命令体验（尚未实现）：
+CLI 文件导入与会话命令已进入本轮实现；当前合同与运行证据见 [CLI 切片](t1-cli-session.md)。手机入口仍待交付：
 
 ```text
 tob instance import ./tob-instance.json

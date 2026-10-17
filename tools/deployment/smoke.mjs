@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolveTarget } from './target.ts';
+import { publicInstance, parseInstance, connectionKey } from '../../packages/contracts/instance.ts';
 
 const target = resolveTarget('uat', process.env);
 const origin = new URL(process.env.PUBLIC_BASE_URL ?? '');
@@ -16,6 +17,11 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
     const health = await get('/healthz');
     assert.equal(health.status, 200);
     assert.deepEqual(health.body, { service: 'tob', environment: 'uat', instanceId: target.instanceId, releaseSha: target.releaseSha, businessEnabled: false });
+    const discovery = await get('/.well-known/open-cloud-groups');
+    assert.equal(discovery.status, 200);
+    const expected = publicInstance({ instanceId: target.instanceId, environment: 'uat', server: target.publicBaseUrl, clientId: target.workosClientId, issuer: target.workosIssuer, authkitDomain: target.authkitDomain });
+    assert.equal(connectionKey(parseInstance(discovery.body)), connectionKey(expected));
+    assert.equal((await get('/api/auth/logout', 'POST')).status, 401);
     const ready = await get('/readyz');
     assert.equal(ready.status, 200);
     assert.deepEqual(ready.body, { ready: true, releaseSha: target.releaseSha, d1SchemaVersion: 2, orgSchemaVersion: 1, businessEnabled: false });
