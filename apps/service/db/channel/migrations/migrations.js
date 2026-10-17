@@ -7,4 +7,3 @@ import m0000 from './0000_superb_madame_masque.sql';
       m0000
     }
   }
-  
