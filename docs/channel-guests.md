@@ -47,8 +47,14 @@ node apps/cli/tob.mjs channel-invite revoke --server "$TOB_SERVER" --channel "$T
 
 Source checks: workerd covers no organization membership creation, no sibling access, no pre-join history, forged body/recipient rejection, owner-role changes, verified email, expiry, revoke/rejoin, concurrent/repeated operations, DO eviction, D1 index failures and disabled organizations. CLI checks cover independent guest routes, current owner selection, stable operation keys and refusal propagation.
 
-The complete slice still requires the phone owner invitation and recipient acceptance/channel interaction, real UAT CLI readback and boundary checks, native size/theme/keyboard evidence, and restoration of test sessions. Source tests alone are **not** a completed tracer bullet. No Prod changes or merge.
+The native UAT path and independent CLI readback are now verified below. Source tests alone do not establish that result. Android, physical phone and Human QA remain unqualified. No Prod changes or merge.
 
 ## Real UAT service/CLI verification — 2026-10-18 JST
 
 Runtime `6226ec3af48d7c446c95421290aaa280ce8a7490`, Worker version `b8e22111-d975-4ad6-81b9-6d56e32fb84c`, schema 5/4/2. Dedicated synthetic A/B accounts: A issued a direct invitation into its default workspace's test channel; B accepted without changing its selected organization. B's org list excluded A's workspace; selecting it and reading a sibling channel were refused. The pre-join message remained hidden; B's one idempotent reply was read back with the exact author by A's independent CLI. Revoke denied old-session read/send; a replacement invitation started a new history floor and refused replay of the previous send. Both test grants were revoked, and A's prior selected workspace restored. This is real public HTTP/CLI evidence, not a native phone pass or email-delivery test.
+
+## Native UAT verification — 2026-10-18 JST
+
+[DeepSeekBot Draft #2150](https://github.com/BotHarness/DeepSeekBot/pull/2150) final runtime `bc08a47e6f060fe6caa6b879c4b2464e12d69e05`: phone owner invited B, B accepted without organization membership/selection change and sent a message read by owner CLI. Rejoin used a new floor; refresh/cold restart preserved access only to the new message. Revocation refused the old phone session and independent CLI. Owner phone also revoked an accepted grant at maximum text size. Six form and composer size/theme cases passed after correcting title and keyboard defects. Independent phone logout revoked only its own session; CLI sessions were retained.
+
+The linked PR evidence records intermediate runtime provenance and first failures. This is synthetic-user iOS Simulator proof, not Hosted AuthKit, email delivery, Android, physical phone or Human QA. Shared Simulator resources were restored and released.
