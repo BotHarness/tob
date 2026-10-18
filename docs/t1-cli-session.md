@@ -101,3 +101,12 @@ node apps/cli/tob.mjs channel-invite accept --server https://groups.example --li
 Use `invite` instead of `channel-invite` for workspace invitations. The explicit server must match the link and an independently imported configuration; link parsing never imports trust or logs into another server. A wrong account gets no destination metadata. A revoked or expired invitation cannot be accepted. Mobile adds a device-local pending target through login/restart, then explicitly accepts and opens the selected guest channel without obtaining workspace membership.
 
 Local validation: 62 workerd tests and 20 CLI tests passed, including recipient preview/no-join, wrong-account denial, revoked acceptance denial, neutral landing and cross-server credential refusal. This records source/local runtime evidence only. UAT deployment, real invitation replay and native screenshots/recording for this new slice remain pending; no Prod change or merge is implied. QR display/save and the unified cloud workspace drawer are follow-up work.
+
+### UAT API/CLI replay — 2026-10-18
+
+Service `f10437bfbe46c4cbcbfb71bc6b599e9551669051` passed [CI](https://github.com/BotHarness/tob/actions/runs/39100874671), was deployed through the existing guarded UAT-only helper, and read back the same version with D1/Org/Channel schemas 5/4/5. [Sanitized replay evidence](evidence/invitation-journey-uat.json) records actual synthetic A/B accounts: recipient preview without joining, wrong-account/anonymous refusal, neutral landing without destination data, explicit server mismatch refusal, revoked acceptance denial, no workspace membership and sibling-channel refusal. A separate pending invitation was retained for native acceptance; it does not prove phone acceptance yet.
+
+- [x] Public locator and recipient preview through real UAT CLI/API.
+- [x] Wrong-account, no-join, revoked and cross-server boundaries.
+- [ ] Assigned native before/after evidence: copy/share, import, login/restart target retention, accept and exact-channel navigation.
+- [ ] QR rendering/save and real camera acceptance, followed by separate platform coverage.
