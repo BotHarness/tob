@@ -312,7 +312,7 @@ The bounded UAT mobile path, deployment callback opt-in, public QR export and ex
 
 See [multi-user collaboration](multi-user-collaboration.md). The Human has authorized these UAT tracer bullets; this supersedes the earlier admin-only end-user limitation, while preserving protected instance initialization and the no-merge/no-Prod boundary.
 
-## T2 首条 HTTP 频道切片（2026-10-18，尚待 UAT）
+## T2 首条 HTTP 频道切片（2026-10-18，UAT 已验证）
 
 Owner 在选定组织创建多个频道；活跃成员可列出频道和收发文本。Org DO 保存稳定创建操作与 creating/active 目录，Channel DO 单独保存配置和自增序号消息。初始化成功才激活目录；重试同一操作沿用同一频道。文本以作者类型、作者 ID 与客户端操作键去重；同键异内容冲突。
 
@@ -323,3 +323,9 @@ Owner 在选定组织创建多个频道；活跃成员可列出频道和收发�
 ### Channel HTTP UAT evidence (2026-10-18)
 
 The current evidence record is [Multi-user collaboration — channel HTTP slice](multi-user-collaboration.md#channel-http-slice--uat-verification-2026-10-18-jst). Mobile creation, independent CLI agreement, durable text roundtrip, current owner/member enforcement and session isolation have actual UAT evidence. This does not qualify WebSocket delivery, invitations, Agent work, rejoin/history grants or the remaining T1 identity event gates. Keep T1/T2 open and proceed to the bounded organization invitation slice under the Human's autonomous UAT goal.
+
+### Organization invitation slice
+
+[Organization invitation contract and verification](organization-invitations.md) adds owner-issued member invitations, recipient acceptance and retry reconciliation through the public API/CLI and mobile client. Org schema 4 records issuance and a conservative first-active-observation history floor. Provider email delivery and same-membership reactivation remain distinct gates; this does not grant channel guests full organization membership or complete T1/T2.
+
+The organization invitation sub-slice now has [native UAT evidence](organization-invitations.md#native-uat-continuation--2026-10-18-jst): phone A→B acceptance, same channels, hidden pre-join history, owner/member enforcement, revoke and independent-session lifecycle. This qualifies the bounded human organization invitation path only. Direct channel guests, Agent admission/interaction, WebSocket and two isolated Hosts through UAT remain outstanding.

@@ -182,3 +182,29 @@ test('channel commands require selected organization and use formal public route
  assert.deepEqual(seen[4].body,{text:'Durable text'});assert.equal(seen[4].operation,'message-operation-0001');
  await fails(run('list','--org','org_other'),'ORGANIZATION_TOKEN_REQUIRED');assert.equal(seen.length,5);
 });
+test('invitation inbox/accept work before org selection; owner send/list/revoke use selected org and stable operation', async()=>{
+ await setup(); const previous=globalThis.fetch;
+ const seen:{path:string;method:string;body:unknown;key:string|null}[]=[];
+ globalThis.fetch=async(url,init)=>{
+  const u=new URL(String(url));
+  if(u.pathname.startsWith('/api/invitations') || u.pathname.includes('/invitations')){
+   seen.push({path:u.pathname+u.search,method:init?.method??'GET',body:init?.body?JSON.parse(String(init.body)):null,key:new Headers(init?.headers).get('Idempotency-Key')});
+   return Response.json({invitations:[],accepted:true});
+  }
+  if(u.pathname.startsWith('/api/organizations/org_invites'))return Response.json({organizationId:'org_invites',role:'owner'});
+  return previous(url,init);
+ };
+ const run=(...args:string[])=>execute(['invite',...args,'--server',config.server],rt);
+ await run('inbox'); await run('accept','--id','invitation_test');
+ await fails(run('send','--email','b@example.test','--operation','invite-operation-0001'),'ORGANIZATION_TOKEN_REQUIRED');
+ await execute(['org','use','--id','org_invites','--server',config.server],rt);
+ await run('send','--email','b@example.test','--operation','invite-operation-0001');
+ await run('list'); await run('revoke','--id','invitation_test');
+ assert.equal(seen.length,5);
+ assert.deepEqual(seen[0],{path:'/api/invitations',method:'GET',body:null,key:null});
+ assert.equal(seen[1].path,'/api/invitations/invitation_test/accept');
+ assert.deepEqual(seen[2],{path:'/api/organizations/org_invites/invitations',method:'POST',body:{email:'b@example.test'},key:'invite-operation-0001'});
+ assert.equal(seen[4].path,'/api/organizations/org_invites/invitations/invitation_test/revoke');
+ await fails(run('list','--org','org_other'),'ORGANIZATION_TOKEN_REQUIRED');
+ await fails(run('accept','--id','not-an-id'),'INVALID_INVITATION');
+});

@@ -157,3 +157,5 @@ node apps/cli/tob.mjs channel history --server "$TOB_SERVER" --id "$TOB_CHANNEL"
 ```
 
 Keep the same operation key and body after an uncertain response. Channel creation is owner-only; active organization members can read/send. A claimed actor in the body is rejected. This HTTP slice does not yet implement WebSocket, invitations, channel guests or Agent credentials.
+
+Organization member invitations (UAT slice): [API, CLI, recovery and verification status](docs/organization-invitations.md). Use `invite send/list/revoke` from the selected owner's workspace, and `invite inbox/accept` from the recipient's own authenticated account. After acceptance, select the organization with `org use`.

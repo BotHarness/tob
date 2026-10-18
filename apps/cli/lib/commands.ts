@@ -45,13 +45,14 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
   }
   const isOrg = args[0] === "org";
   const isChannel = args[0] === "channel";
-  const scoped = isOrg || isChannel;
+  const isInvitation = args[0] === "invite";
+  const scoped = isOrg || isChannel || isInvitation;
   const orgCommand = scoped ? args[1] : undefined;
   const options: Record<string, string> = {};
   if (scoped) {
-    if (!(isOrg ? ["list", "create", "use", "show", "update"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
+    if (!(isOrg ? ["list", "create", "use", "show", "update"] : isInvitation ? ["inbox", "list", "send", "accept", "revoke"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
     for (let n = 2; n < args.length; n += 2) {
-      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
+      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file", "--email"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
       options[args[n]] = args[n+1];
     }
   }
@@ -132,9 +133,9 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
     }
     if (scoped) {
       let i = await freshIdentity();
-      const call = async (path: string, init: RequestInit = {}) => {
+      const call = async (path: string, init: RequestInit = {}, prefix = "/api/organizations") => {
         await checkDiscovery(c, rt.signal);
-        const r = await request(c.server + "/api/organizations" + path, { ...init, headers: { ...init.headers, Authorization: "Bearer " + ensureSession().accessToken } }, rt.signal);
+        const r = await request(c.server + prefix + path, { ...init, headers: { ...init.headers, Authorization: "Bearer " + ensureSession().accessToken } }, rt.signal);
         const value = await responseJson(r);
         if (!r.ok) {
           const code = (value.error as { code?: unknown })?.code;
@@ -142,6 +143,24 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
         }
         return value;
       };
+      if (isInvitation) {
+        const id = options["--id"];
+        if (orgCommand === "inbox") return call(options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : "", {}, "/api/invitations");
+        if (orgCommand === "accept") {
+          if (!id || !/^invitation_[A-Za-z0-9]+$/.test(id)) throw new ClientError("INVALID_INVITATION");
+          return call("/" + id + "/accept", { method: "POST" }, "/api/invitations");
+        }
+        const orgId = options["--org"] ?? i.organizationId;
+        if (!orgId || !/^org_[A-Za-z0-9]+$/.test(orgId) || orgId !== i.organizationId) throw new ClientError("ORGANIZATION_TOKEN_REQUIRED");
+        const base = "/" + orgId + "/invitations";
+        if (orgCommand === "list") return call(base + (options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : ""));
+        if (orgCommand === "send") {
+          if (!options["--email"] || !options["--operation"]) throw new ClientError("USAGE");
+          return call(base, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": options["--operation"] }, body: JSON.stringify({ email: options["--email"] }) });
+        }
+        if (!id || !/^invitation_[A-Za-z0-9]+$/.test(id)) throw new ClientError("INVALID_INVITATION");
+        return call(base + "/" + id + "/revoke", { method: "POST" });
+      }
       if (isChannel) {
         const orgId = options["--org"] ?? i.organizationId;
         if (!orgId || !/^org_[A-Za-z0-9]+$/.test(orgId) || i.organizationId !== orgId) throw new ClientError("ORGANIZATION_TOKEN_REQUIRED");

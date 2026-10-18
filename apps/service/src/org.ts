@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { eq, and, gt, asc } from "drizzle-orm";
 import migrations from "../db/org/migrations/migrations";
-import { orgConfig, memberAccessProjection, channelDirectory } from "../db/org/schema";
+import { orgConfig, memberAccessProjection, channelDirectory, organizationInvitation } from "../db/org/schema";
 type VerifiedMember = { id: string; user_id: string; organization_id: string; status: string; role: { slug: string } };
 export class Org extends DurableObject<Env> {
   private readonly db;
@@ -12,7 +12,7 @@ export class Org extends DurableObject<Env> {
     this.db = drizzle(ctx.storage);
     ctx.blockConcurrencyWhile(async () => { await migrate(this.db, migrations); });
   }
-  schemaStatus() { this.db.select().from(orgConfig).limit(1).all(); return { schemaVersion: 3 }; }
+  schemaStatus() { this.db.select().from(orgConfig).limit(1).all(); return { schemaVersion: 4 }; }
   initialize(orgId: string, name: string) {
     const old = this.db.select().from(orgConfig).get();
     if (old && (old.orgId !== orgId || old.status !== "active")) throw new Error("ORG_STATE_CONFLICT");
@@ -26,8 +26,33 @@ export class Org extends DurableObject<Env> {
   }
   private observe(orgId: string, member: VerifiedMember) {
     if (member.organization_id !== orgId || member.status !== "active" || !["owner", "member"].includes(member.role.slug)) throw new Error("INVALID_MEMBER");
-    const row = { workosUserId: member.user_id, membershipId: member.id, status: member.status, role: member.role.slug, verifiedAt: new Date().toISOString() };
+    const previous = this.db.select().from(memberAccessProjection).where(eq(memberAccessProjection.workosUserId, member.user_id)).get();
+    const historyFrom = previous?.membershipId === member.id ? previous.historyFrom : new Date().toISOString();
+    const row = { historyFrom, workosUserId: member.user_id, membershipId: member.id, status: member.status, role: member.role.slug, verifiedAt: new Date().toISOString() };
     this.db.insert(memberAccessProjection).values(row).onConflictDoUpdate({ target: memberAccessProjection.workosUserId, set: row }).run();
+  }
+  memberHistory(orgId: string, member: VerifiedMember) {
+    this.read(orgId); this.observe(orgId, member);
+    return this.db.select().from(memberAccessProjection).where(eq(memberAccessProjection.workosUserId, member.user_id)).get()!.historyFrom;
+  }
+  reserveInvitation(orgId: string, member: VerifiedMember, operationId: string, email: string) {
+    this.read(orgId); this.observe(orgId, member);
+    if (member.role.slug !== "owner") throw new Error("OWNER_REQUIRED");
+    const inserted = this.db.insert(organizationInvitation).values({ operationId, inviterId: member.user_id, email, createdAt: new Date().toISOString() }).onConflictDoNothing().returning().all();
+    const row = this.db.select().from(organizationInvitation).where(eq(organizationInvitation.operationId, operationId)).get()!;
+    if (row.email !== email || row.inviterId !== member.user_id) return null;
+    return { ...row, fresh: inserted.length === 1 };
+  }
+  bindInvitation(orgId: string, operationId: string, invitationId: string) {
+    this.read(orgId);
+    const row = this.db.select().from(organizationInvitation).where(eq(organizationInvitation.operationId, operationId)).get();
+    if (!row || (row.invitationId && row.invitationId !== invitationId)) return false;
+    this.db.update(organizationInvitation).set({ invitationId }).where(eq(organizationInvitation.operationId, operationId)).run();
+    return true;
+  }
+  managedInvitation(orgId: string, invitationId: string) {
+    this.read(orgId);
+    return this.db.select().from(organizationInvitation).where(eq(organizationInvitation.invitationId, invitationId)).get() ?? null;
   }
   view(orgId: string, member: VerifiedMember) { const result = this.read(orgId); this.observe(orgId, member); return result; }
   update(orgId: string, member: VerifiedMember, description: string, version: number) {

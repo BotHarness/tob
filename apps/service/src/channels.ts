@@ -9,7 +9,9 @@ async function memberContext(env: Env, authorization: string | undefined, orgId:
   if (identity.organizationId !== orgId) throw new AccessError("ORGANIZATION_TOKEN_REQUIRED", 403);
   const member = await access(env, identity.userId, orgId);
   if (!member.created_at || !Number.isFinite(Date.parse(member.created_at))) throw new AccessError("IDENTITY_UNAVAILABLE", 503);
-  return { member, actor: { id: identity.userId, type: "human" as const, organizationId: orgId, historyFrom: new Date(member.created_at).toISOString() } };
+  const observed = await env.ORGS.getByName(orgId).memberHistory(orgId, member);
+  const historyFrom = new Date(Math.max(Date.parse(member.created_at), Date.parse(observed))).toISOString();
+  return { member, actor: { id: identity.userId, type: "human" as const, organizationId: orgId, historyFrom } };
 }
 async function channelContext(env: Env, authorization: string | undefined, orgId: string, channelId: string) {
   const ctx = await memberContext(env, authorization, orgId);
