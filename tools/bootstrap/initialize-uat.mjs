@@ -37,7 +37,7 @@ try {
   const subdomain = await cf('/workers/subdomain');
   assert.equal(target.PUBLIC_BASE_URL, `https://${target.WORKER_NAME}.${subdomain.result.subdomain}.workers.dev`);
   const ready = await jsonRequest(target.PUBLIC_BASE_URL + '/readyz');
-  assert.equal(ready.d1SchemaVersion, 2);
+  assert.ok([2, 3, 4].includes(ready.d1SchemaVersion));
   const payloadHash = createHash('sha256').update(JSON.stringify([target.CLOUDFLARE_ACCOUNT_ID, target.INSTANCE_DB_ID, target.INSTANCE_ID, bootstrap.environmentId, bootstrap.clientId, user.id])).digest('hex');
   const sql = async (query, params = []) => {
     const result = await cf('/d1/database/' + target.INSTANCE_DB_ID + '/query', { sql: query, params });

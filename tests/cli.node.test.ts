@@ -35,6 +35,7 @@ beforeEach(()=>{
    else if(pending.length)return Response.json({error:pending.shift()},{status:400});
    return Response.json({access_token:await access(),refresh_token:'private-refresh-'+serial});
   }
+  if(u.endsWith('/api/onboarding'))return Response.json({organizationId:'org_default'});
   if(u.endsWith('/api/me'))return Response.json({userId:'user_fixture',instanceId:config.instanceId,instanceRole:'admin'});
   if(u.endsWith('/api/auth/logout'))return Response.json({remoteRevoked:true},{status:logoutStatus});
   throw new Error('unexpected test request');
@@ -50,7 +51,7 @@ test('public import → real signed device login → identity → refresh → ow
  const imported=await execute(['instance','import',input],rt);assert.equal(state(),undefined);
  const login=await command('login');const first=state()!;
  assert.equal((login as {instanceRole:string}).instanceRole,'admin');
- assert.deepEqual(await command('whoami'),login);
+ assert.deepEqual({ ...await command('whoami') as object, defaultOrganizationId: 'org_default' },login);
  assert.equal((await command('refresh') as {refreshed:boolean}).refreshed,true);
  assert.notEqual(state()!.refreshToken,first.refreshToken);
  assert.equal(statSync(rt.directory!).mode&0o777,0o700);
@@ -138,4 +139,19 @@ test('organization selection uses a separate rotated token and carries only publ
  const output=JSON.stringify(seen);assert.equal(output.includes(state()!.accessToken),false);
  globalThis.fetch=async(url,init)=>String(url).includes('/api/organizations')?Response.json({error:{code:'ORGANIZATION_OWNER_REQUIRED'}},{status:403}):original(url,init);
  await fails(org('update','--description','denied','--version','1'),'ORGANIZATION_OWNER_REQUIRED');
+});
+test('ordinary-user login and explicit onboarding retry preserve the authenticated session',async()=>{
+ const base=globalThis.fetch;
+ let unavailable=true;
+ globalThis.fetch=async(input,init)=>{
+  if(String(input).endsWith('/api/me'))return Response.json({userId:'user_fixture',instanceId:config.instanceId,instanceRole:'user'});
+  if(String(input).endsWith('/api/onboarding')&&unavailable)return Response.json({error:{code:'IDENTITY_UNAVAILABLE'}},{status:503});
+  return base(input,init);
+ };
+ await execute(['instance','import',input],rt);
+ await fails(command('login'),'ONBOARDING_INCOMPLETE');assert.ok(state());
+ unavailable=false;
+ const result=await command('onboard');
+ assert.equal((result as {instanceRole:string}).instanceRole,'user');
+ assert.equal((result as {defaultOrganizationId:string}).defaultOrganizationId,'org_default');
 });

@@ -6,7 +6,7 @@ export const instanceConfig = sqliteTable("instance_config", {
   registrationMode: text("registration_mode").notNull(),
   orgCreationMode: text("org_creation_mode").notNull(),
   configVersion: integer("config_version").notNull(),
-}, (t) => [check("singleton", sql`${t.singletonId} = 1`), check("admin_only", sql`${t.registrationMode} = 'admin_only' AND ${t.orgCreationMode} = 'admin_only'`)]);
+}, (t) => [check("singleton", sql`${t.singletonId} = 1`), check("admission_modes", sql`${t.registrationMode} IN ('admin_only', 'authenticated') AND ${t.orgCreationMode} IN ('admin_only', 'all_users')`)]);
 
 export const instanceAdmin = sqliteTable("instance_admin", {
   workosUserId: text("workos_user_id").primaryKey(),

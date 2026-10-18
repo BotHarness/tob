@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { drizzle } from "drizzle-orm/d1";
 import { and, eq, inArray } from "drizzle-orm";
 import { organizationLink, managementOperation } from "../db/d1/schema";
-import { admit, AccessError } from "./auth/admission";
+import { admit, requireOrganizationCreation, AccessError } from "./auth/admission";
 
 type Membership = { id: string; user_id: string; organization_id: string; status: string; role: { slug: string }; roles?: { slug: string }[] };
 type ProviderOrg = { id: string; name: string; external_id: string };
@@ -35,19 +35,19 @@ export async function access(env: Env, userId: string, orgId: string) {
   return data[0];
 }
 async function hash(text: string) { return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))), b => b.toString(16).padStart(2, "0")).join(""); }
-export async function createOrganization(env: Env, actorId: string, key: string, name: string) {
+export async function createOrganization(env: Env, actorId: string, key: string, name: string, kind = "organization.create") {
   if (!/^[A-Za-z0-9_-]{16,100}$/.test(key) || !name.trim() || name.length > 80 || /[\u0000-\u001f]/.test(name)) throw new AccessError("INVALID_ORGANIZATION_INPUT", 400);
   name = name.trim();
   const roles = await workos<{ data: { slug: string; resource_type_slug?: string }[] }>(env, "/authorization/roles");
   if (!["owner", "member"].every(slug => roles?.data.some(r => r.slug === slug && (!r.resource_type_slug || r.resource_type_slug === "organization")))) throw new AccessError("ROLE_CONFIGURATION_INVALID", 503);
   const db = drizzle(env.INSTANCE_DB);
-  const operationId = "organization.create:" + await hash(actorId + ":" + key);
+  const operationId = kind + ":" + await hash(actorId + ":" + key);
   const payloadHash = await hash(JSON.stringify({ name }));
   const externalId = env.INSTANCE_ID + ":" + operationId;
   // One D1 insert wins. Replays may reconcile this operation but never create another external resource.
-  const inserted = await db.insert(managementOperation).values({ operationId, actorId, kind: "organization.create", payloadHash, targetId: externalId, state: "requested", updatedAt: new Date().toISOString() }).onConflictDoNothing().returning();
+  const inserted = await db.insert(managementOperation).values({ operationId, actorId, kind, payloadHash, targetId: externalId, state: "requested", updatedAt: new Date().toISOString() }).onConflictDoNothing().returning();
   let op = (await db.select().from(managementOperation).where(eq(managementOperation.operationId, operationId)).get())!;
-  if (op.actorId !== actorId || op.payloadHash !== payloadHash || op.kind !== "organization.create") throw new AccessError("OPERATION_CONFLICT", 409);
+  if (op.actorId !== actorId || op.payloadHash !== payloadHash || op.kind !== kind) throw new AccessError("OPERATION_CONFLICT", 409);
   if (op.state === "succeeded") { await access(env, actorId, op.targetId); return { organizationId: op.targetId, operationId, created: true }; }
   let org = await workos<ProviderOrg>(env, "/organizations/external_id/" + encodeURIComponent(externalId));
   if (!org) {
@@ -93,6 +93,7 @@ export const organizations = new Hono<{ Bindings: Env }>()
   })
   .post("/", async c => {
     const identity = await admit(c.req.header("Authorization"), c.env);
+    await requireOrganizationCreation(identity, c.env);
     let body; try { body = await c.req.json(); } catch { throw new AccessError("INVALID_ORGANIZATION_INPUT", 400); }
     if (!body || typeof body.name !== "string" || Object.keys(body).some(k => k !== "name")) throw new AccessError("INVALID_ORGANIZATION_INPUT", 400);
     return c.json(await createOrganization(c.env, identity.userId, c.req.header("Idempotency-Key") ?? "", body.name));

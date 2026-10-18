@@ -139,3 +139,7 @@ The project is intended for open-source release. The license is still to be sele
 Mobile UAT configuration/QR export and the native verification checklist: [T1 mobile session](docs/t1-mobile-session.md).
 
 Organization creation, CLI selection and permission verification: [T1 organization slice](docs/t1-organizations.md).
+
+### Multi-user onboarding candidate
+
+The next UAT slice supports ordinary WorkOS users, one default workspace per user, and additional workspaces. New instances remain closed until the deployment operator enables the policy. See [scope, recovery and UAT operator commands](docs/multi-user-collaboration.md). CLI login prepares the default workspace; `node apps/cli/tob.mjs onboard --server https://YOUR_INSTANCE` retries preparation using the saved session. The dedicated `tools/testing/uat-users.mjs PROFILE PRIVATE_DIRECTORY` harness creates synthetic UAT users and private independent sessions; it does not test Hosted AuthKit or enable public registration.

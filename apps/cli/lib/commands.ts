@@ -54,7 +54,7 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
   }
   const command = isOrg ? "org" : args[0];
   const server = isOrg ? options["--server"] : args[2];
-  if ((!isOrg && (!["login", "whoami", "refresh", "logout"].includes(command) || args[1] !== "--server" || args.length !== 3)) || !server) throw new ClientError("USAGE");
+  if ((!isOrg && (!["login", "whoami", "refresh", "logout", "onboard"].includes(command) || args[1] !== "--server" || args.length !== 3)) || !server) throw new ClientError("USAGE");
   serverOrigin(server);
   const c = store.configs().find(c => c.server === server);
   if (!c) throw new ClientError("INSTANCE_NOT_IMPORTED");
@@ -162,7 +162,14 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
     const me = await request(c.server + "/api/me", { headers: { Authorization: "Bearer " + ensureSession().accessToken } }, rt.signal);
     if (!me.ok) throw new ClientError(me.status === 403 ? "INSTANCE_ACCESS_DENIED" : me.status === 401 ? "UNAUTHENTICATED" : "INSTANCE_UNAVAILABLE");
     const body = await responseJson(me);
-    if (body.userId !== i.userId || body.instanceId !== c.instanceId || body.instanceRole !== "admin") throw new ClientError("IDENTITY_RESPONSE_MISMATCH");
-    return { userId: i.userId, instanceId: c.instanceId, server: c.server, instanceRole: "admin", ...(i.organizationId ? { organizationId: i.organizationId } : {}), ...(command === "refresh" ? { refreshed: true } : {}) };
+    if (body.userId !== i.userId || body.instanceId !== c.instanceId || !["admin", "user"].includes(String(body.instanceRole))) throw new ClientError("IDENTITY_RESPONSE_MISMATCH");
+    let defaultOrganizationId: string | undefined;
+    if (command === "login" || command === "onboard") {
+      const r = await request(c.server + "/api/onboarding", { method: "POST", headers: { Authorization: "Bearer " + ensureSession().accessToken } }, rt.signal);
+      const value = await responseJson(r);
+      if (!r.ok || typeof value.organizationId !== "string" || !/^org_[A-Za-z0-9]+$/.test(value.organizationId)) throw new ClientError("ONBOARDING_INCOMPLETE");
+      defaultOrganizationId = value.organizationId;
+    }
+    return { userId: i.userId, instanceId: c.instanceId, server: c.server, instanceRole: body.instanceRole, ...(defaultOrganizationId ? { defaultOrganizationId } : {}), ...(i.organizationId ? { organizationId: i.organizationId } : {}), ...(command === "refresh" ? { refreshed: true } : {}) };
   });
 }

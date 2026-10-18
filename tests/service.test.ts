@@ -23,7 +23,7 @@ it("migrates both real SQLite bindings and repeated migrations keep data", async
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
   const ready = await request("/readyz");
   expect(ready.status).toBe(200);
-  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 3, orgSchemaVersion: 2, businessEnabled: true });
+  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 4, orgSchemaVersion: 2, businessEnabled: true });
   expect(await env.INSTANCE_DB.prepare("SELECT config_version FROM instance_config").first("config_version")).toBe(7);
   await expect(env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (2,'admin_only','admin_only',1)").run()).rejects.toThrow();
 });
@@ -187,7 +187,7 @@ it("logout refuses provider redirects without following them or reporting revoca
   expect(logs).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: "session_logout_unconfirmed", phase: "provider_response", status: 302 }));
 });
 
-function organizationProvider(options: { loseCreate?: boolean; loseMembership?: boolean; missingRole?: boolean } = {}) {
+function organizationProvider(options: { loseCreate?: boolean; loseMembership?: boolean; missingRole?: boolean; userVerified?: boolean; missingUser?: boolean } = {}) {
   let org: { id: string; name: string; external_id: string } | undefined;
   let member: { id: string; user_id: string; organization_id: string; status: string; role: { slug: string }; roles?: { slug: string }[] } | undefined;
   const calls = { creates: 0, members: 0 };
@@ -197,6 +197,7 @@ function organizationProvider(options: { loseCreate?: boolean; loseMembership?: 
     expect(new Request(String(input), init).redirect).toBe("manual");
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer local-test-secret");
     const data = init?.body ? JSON.parse(String(init.body)) : {};
+    if (url.pathname.startsWith("/user_management/users/")) return options.missingUser ? new Response(null, { status: 404 }) : Response.json({ id: url.pathname.split("/").at(-1), email_verified: options.userVerified !== false });
     if (url.pathname === "/authorization/roles") return Response.json({ data: [{ slug: "member" }, ...options.missingRole ? [] : [{ slug: "owner" }]] });
     if (url.pathname.startsWith("/organizations/external_id/")) return org ? Response.json(org) : new Response(null, { status: 404 });
     if (url.pathname === "/organizations") { calls.creates++; org = { id: "org_test", name: data.name, external_id: data.external_id }; if (options.loseCreate) { options.loseCreate = false; throw new TypeError("lost response"); } return Response.json(org); }
@@ -289,4 +290,92 @@ it("provider outage after a successful owner read cannot authorize a cached sett
   vi.spyOn(globalThis, "fetch").mockImplementation(async url => String(url).includes("/jwks/") ? Response.json({ keys: [publicKey] }) : new Response(null, { status: 503 }));
   expect((await orgRequest("/org_test", "PATCH", { description: "Offline write", version: 1 }, { org_id: "org_test" })).status).toBe(503);
   expect(await env.ORGS.getByName("org_test").read("org_test")).toMatchObject({ version: 1, description: "" });
+});
+
+const enableUsers = () => env.INSTANCE_DB.prepare("UPDATE instance_config SET registration_mode='authenticated',org_creation_mode='all_users',config_version=config_version+1 WHERE singleton_id=1").run();
+const onboard = async (claims: JWTPayload = {}) => request('/api/onboarding', { method: 'POST', headers: { Authorization: 'Bearer ' + await token(claims) } });
+it('admits verified ordinary users without administrator grants and provisions one default workspace across retries', async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize();
+  const p = organizationProvider();
+  expect((await onboard({ sub: 'user_a' })).status).toBe(403);
+  await enableUsers();
+  const me = await authenticated({ sub: 'user_a' });
+  expect(await me.json()).toMatchObject({ userId: 'user_a', instanceRole: 'user' });
+  expect(p.calls.creates).toBe(0); // GET has no provisioning side effect
+  const results = await Promise.all([onboard({ sub: 'user_a' }), onboard({ sub: 'user_a' })]);
+  expect(results.some(r => r.status === 200)).toBe(true);
+  expect((await onboard({ sub: 'user_a' })).status).toBe(200);
+  expect(p.calls).toEqual({ creates: 1, members: 1 });
+  expect(p.member?.user_id).toBe('user_a');
+  expect(p.member?.role.slug).toBe('owner');
+  expect(await env.INSTANCE_DB.prepare('SELECT count(*) AS n FROM instance_admin').first('n')).toBe(1);
+  expect((await orgRequest('/org_test/access', 'GET', undefined, { sub: 'user_b' })).status).toBe(403);
+  await env.INSTANCE_DB.prepare("UPDATE instance_config SET org_creation_mode='admin_only'").run();
+  expect((await orgRequest('', 'POST', { name: 'Second workspace' }, { sub: 'user_a' })).status).toBe(403);
+  expect((await onboard({ sub: 'user_a' })).status).toBe(200);
+});
+it.each([{ userVerified: false }, { missingUser: true }])('does not provision an unverified or deleted provider user: %j', async options => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize(); await enableUsers();
+  const p = organizationProvider(options);
+  expect((await onboard({ sub: 'user_a' })).status).toBe(403);
+  expect(p.calls.creates).toBe(0);
+});
+it('default workspace response loss is recoverable without promoting a changed membership', async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize(); await enableUsers();
+  const p = organizationProvider({ loseMembership: true });
+  expect((await onboard({ sub: 'user_a' })).status).toBe(503);
+  expect((await onboard({ sub: 'user_a' })).status).toBe(200);
+  p.member!.role.slug = 'member';
+  expect((await onboard({ sub: 'user_a' })).status).toBe(200);
+  expect(p.calls).toEqual({ creates: 1, members: 1 });
+  expect(p.member!.role.slug).toBe('member');
+  await env.INSTANCE_DB.prepare("UPDATE instance_admin SET status='revoked'").run();
+  expect((await authenticated()).status).toBe(403);
+});
+it('two ordinary users receive distinct default organizations, while one user can create a second and switch without cross-user access', async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS); await initialize(); await enableUsers();
+  const orgs = new Map<string, { id: string; external_id: string; name: string }>();
+  const members: { id: string; user_id: string; organization_id: string; status: string; role: { slug: string } }[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const u = new URL(String(input));
+    if (u.pathname.includes('/jwks/')) return Response.json({ keys: [publicKey] });
+    const data = init?.body ? JSON.parse(String(init.body)) : {};
+    if (u.pathname.startsWith('/user_management/users/')) return Response.json({ id: u.pathname.split('/').at(-1), email_verified: true });
+    if (u.pathname === '/authorization/roles') return Response.json({ data: [{ slug: 'owner' }, { slug: 'member' }] });
+    if (u.pathname.startsWith('/organizations/external_id/')) {
+      const org = orgs.get(decodeURIComponent(u.pathname.split('/').at(-1)!));
+      return org ? Response.json(org) : new Response(null, { status: 404 });
+    }
+    if (u.pathname === '/organizations') { const org = { id: 'org_' + (orgs.size + 1), ...data }; orgs.set(data.external_id, org); return Response.json(org); }
+    if (u.pathname === '/user_management/organization_memberships') {
+      if (init?.method === 'POST') {
+        const m = { id: 'om_' + (members.length + 1), user_id: data.user_id, organization_id: data.organization_id, status: 'active', role: { slug: data.role_slug } }; members.push(m); return Response.json(m);
+      }
+      return Response.json({ data: members.filter(m => m.user_id === u.searchParams.get('user_id') && (!u.searchParams.has('organization_id') || m.organization_id === u.searchParams.get('organization_id'))), list_metadata: { after: null } });
+    }
+    throw Error('unexpected provider request');
+  });
+  const a = { sub: 'user_a' }, b = { sub: 'user_b' };
+  expect((await onboard(a)).status).toBe(200);
+  expect((await onboard(b)).status).toBe(200);
+  const extra = await orgRequest('', 'POST', { name: 'Another workspace' }, a, 'second-workspace-operation');
+  expect(extra.status).toBe(200);
+  expect((await onboard(a)).status).toBe(200);
+  expect(orgs.size).toBe(3);
+  expect(await (await orgRequest('', 'GET', undefined, a)).json()).toMatchObject({ organizations: [{ organizationId: 'org_1' }, { organizationId: 'org_3' }] });
+  expect(await (await orgRequest('', 'GET', undefined, b)).json()).toMatchObject({ organizations: [{ organizationId: 'org_2' }] });
+  for (const id of ['org_1', 'org_3']) {
+    expect((await orgRequest('/' + id, 'GET', undefined, { ...a, org_id: id })).status).toBe(200);
+    expect((await orgRequest('/' + id, 'GET', undefined, { ...b, org_id: id })).status).toBe(403);
+  }
+});
+it('upgrades an already initialized instance without changing admin binding or opening admission', async () => {
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS.slice(0, 3));
+  await initialize();
+  await env.INSTANCE_DB.prepare('UPDATE instance_config SET config_version=7').run();
+  await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
+  expect(await env.INSTANCE_DB.prepare('SELECT * FROM instance_config').first()).toEqual({ singleton_id: 1, registration_mode: 'admin_only', org_creation_mode: 'admin_only', config_version: 7 });
+  expect(await env.INSTANCE_DB.prepare('SELECT workos_user_id FROM instance_admin').first('workos_user_id')).toBe('user_admin');
+  await initialize('user_other');
+  expect(await env.INSTANCE_DB.prepare('SELECT workos_user_id FROM instance_admin').first('workos_user_id')).toBe('user_admin');
 });

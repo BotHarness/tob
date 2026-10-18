@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
 import { admit, AccessError } from "./auth/admission";
-import { organizations } from "./organizations";
+import { organizations, createOrganization } from "./organizations";
 import { instanceAdmin, instanceConfig, managementOperation } from "../db/d1/schema";
 import { AuthenticationError, verifyHumanToken } from "./auth/workos";
 import { publicInstance } from "../../../packages/contracts/instance.ts";
@@ -53,11 +53,16 @@ const api = app
     await db.select({ id: managementOperation.operationId }).from(managementOperation).limit(1);
     // One reserved, schema-only object; this does not create a business organization.
     const org = await c.env.ORGS.getByName("__tob_deployment_probe__").schemaStatus();
-    return c.json({ ready: true, releaseSha: c.env.RELEASE_SHA, d1SchemaVersion: 3, orgSchemaVersion: org.schemaVersion, businessEnabled: true });
+    return c.json({ ready: true, releaseSha: c.env.RELEASE_SHA, d1SchemaVersion: 4, orgSchemaVersion: org.schemaVersion, businessEnabled: true });
   });
 const withIdentity = api.get("/api/me", async (c) => {
   const identity = await admit(c.req.header("Authorization"), c.env);
-  return c.json({ userId: identity.userId, instanceId: c.env.INSTANCE_ID, instanceRole: "admin", capabilities: ["instance:read-self"] });
+  return c.json({ userId: identity.userId, instanceId: c.env.INSTANCE_ID, instanceRole: identity.instanceRole, capabilities: ["instance:read-self"] });
+}).post("/api/onboarding", async c => {
+  const identity = await admit(c.req.header("Authorization"), c.env);
+  // Caller supplies no identity, name or operation key. The operation namespace is
+  // reserved so an ordinary organization.create request cannot occupy it.
+  return c.json(await createOrganization(c.env, identity.userId, "default-workspace-v1", "My workspace", "user.default-organization"));
 });
 const withOrganizations = withIdentity.route("/api/organizations", organizations);
 // No public bootstrap route; unrelated business commands remain closed.

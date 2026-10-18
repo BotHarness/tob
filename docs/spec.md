@@ -307,3 +307,7 @@ T1 已记录领取并启动首个本地/UAT 增量；完整 T1 验收未完成�
 ## T1 mobile session increment — 2026-10-18
 
 The bounded UAT mobile path, deployment callback opt-in, public QR export and explicit native acceptance gates are recorded in [T1 mobile session](t1-mobile-session.md). Mobile sign-in is independent of Host pairing. This source increment does not complete T1 or authorize Prod.
+
+## Expanded multi-user delivery scope
+
+See [multi-user collaboration](multi-user-collaboration.md). The Human has authorized these UAT tracer bullets; this supersedes the earlier admin-only end-user limitation, while preserving protected instance initialization and the no-merge/no-Prod boundary.
