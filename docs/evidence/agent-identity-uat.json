@@ -1,0 +1,9 @@
+{
+  "releaseSha": "3eeed5b05782276b1a02cc2412dd04ab0ec60bca",
+  "independentChannelAgents": 2,
+  "canonicalIdentityVerified": true,
+  "ownerAndOrganizationVerified": true,
+  "cliCredentialFilesRemainPrivate": true,
+  "hostImportAndCommunication": "pending",
+  "credentials": "retained only for upcoming isolated UAT Hosts"
+}

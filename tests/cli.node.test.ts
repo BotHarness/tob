@@ -269,6 +269,13 @@ test('Agent create persists a private stable credential before network and retri
   return original(url,init);
  };
  assert.deepEqual(await execute(['agent-channel','history','--credential-file',result.credentialFile],rt),{messages:[],nextCursor:4,hasMore:false});
+ const identity={channelId,organizationId:credential.organizationId,agent:{actorId:credential.actorId,ownerUserId:credential.ownerUserId,kind:'agent',state:'active',name:credential.name,historyAfter:0}};
+ globalThis.fetch=async(url,init)=>{
+  if(String(url).endsWith('/identity')){assert.equal(String(url),config.server+'/api/agent-channels/'+channelId+'/identity');assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer tob_agent_'+credential.actorId+'.'+credential.secret);return Response.json(identity);}
+  return original(url,init);
+ };
+ assert.deepEqual(await execute(['agent-channel','identity','--credential-file',result.credentialFile],rt),identity);
+ await fails(execute(['agent-channel','identity','--credential-file',result.credentialFile,'--after','1'],rt),'USAGE');
  assert.deepEqual(state(),before);
  discovery.auth.clientId='client_changed';discovery.auth.issuer='https://api.workos.com/user_management/client_changed';discovery.auth.jwksUri='https://api.workos.com/sso/jwks/client_changed';
  await fails(execute(['agent-channel','history','--credential-file',result.credentialFile],rt),'INSTANCE_CONFIG_CHANGED');

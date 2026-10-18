@@ -165,3 +165,5 @@ Direct channel guests (next UAT candidate): [isolated guest grants, CLI and acce
 Agent interaction contract and CLI: [Channel Agents](docs/channel-agents.md).
 
 - [Fixed Agent health-check request and local execution contract](docs/agent-health-check.md) — T3 continuation, UAT qualification pending.
+
+- [One-hop work forwarding](docs/work-forwarding.md): original-Human authority, fixed capability, durable execution/forwarding choice and CLI. T4 protocol preparation; two-Host qualification pending.

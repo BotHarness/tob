@@ -1,0 +1,67 @@
+# One-hop work forwarding
+
+T4 begins with a bounded public protocol: an authenticated Agent A can forward a pending health-check request to Agent B in the same channel. This protocol increment does not yet complete the DSH Host/phone tracer bullet.
+
+## Authority and persistence
+
+`POST /api/agent-channels/:channel/work-requests/:request/forward` accepts only `{targetActorId}`. The caller must be the original target. Channel DO constructs the child from its canonical parent: original Human user and membership ID, channel, capability, creation time and expiry are unchanged. The child records `delegation: {parentRequestId, actorId, hops: 1}` and its visible author is Agent A. A child cannot forward again or return to A.
+
+One unique parent column and a server-derived child ID allow only one child. The message and child row commit in the same synchronous SQLite transaction. Identical retries return that child; selecting another target conflicts. Acknowledgement recovery does not extend the deadline. Current issuer/requester checks still apply before reading back a retry.
+
+Execution authorization now durably selects execution before returning to an Agent. Forwarding and execution cannot both win the same parent. Finished results cannot obtain a later execution authorization. A rejected result also closes the forwarding option. A forwarding parent cannot publish its own execution result. This is a protocol fence, not a claim that arbitrary local effects execute exactly once.
+
+B must check the original Human's current admission and exact membership, B's current credential/owner, and the forwarding Agent/owner. The DO rechecks local credentials and expiry after external identity waits. B's operator must independently permit the original Human in B's local policy. A's ownership or local permissions do not grant B permission. A's eventual DSH forwarding tool also needs its own explicit local target policy; this increment does not install that tool.
+
+The reference health runner accepts the typed child only when its visible Agent author matches its delegation. Ordinary messages remain non-executable. B's result cites the child request; the child points to the original parent. Existing mobile history renders the server's readable request/result text; a dedicated forwarding control is not added in this increment.
+
+## Connection identity
+
+`GET /api/agent-channels/:channel/identity` authenticates the Agent and its current issuing owner, then rechecks the local grant. It returns the canonical channel, organization and public Agent identity (including owner, history floor and expiry), never the credential or its hash. Host import must compare this with the selected credential before binding; caller-authored file labels alone are not identity evidence.
+
+## Public CLI
+
+```sh
+node apps/cli/tob.mjs agent-channel forward \
+  --credential-file /private/agent-a.json \
+  --request wr_... --target ag_...
+```
+
+The credential is read from an owner-only file. Discovery must match trusted configuration before a bearer is sent. The CLI never accepts a replacement Human, capability, deadline or hop count and checks the returned Agent author/target/parent. Calling it is an explicit operator forwarding action; it is not an automatic unrestricted forwarding loop.
+
+Configure and run B with the existing `agent-health configure|run` commands and B's original-Human allow-list. Preserve B's private ledger across restarts; replaying a completed child resends no work. Deleting the ledger is not a retry strategy.
+
+## Migration and rollback
+
+Channel schema 5 adds nullable unique `parent_request_id` and default-false `execution_authorized`. Existing work and text rows remain. D1/Org schemas stay 5/4.
+
+After accepting forwarded work, do not downgrade to an older Worker that ignores these fields: it could authorize execution of a forwarded parent. Prefer a forward fix. An emergency downgrade requires stopping the affected Agents and quiescing work requests first; preserving SQLite columns alone is insufficient. This is an authorization/data-contract rollout boundary, even though the SQL migration is additive.
+
+## Verification boundary
+
+Local Worker tests exercise one-hop/author/expiry restrictions, canonical replay after DO eviction, execution-versus-forward races, conflicting concurrent targets, atomic rollback, original membership loss/rejoin and revocation during provider waits. Node tests exercise the public CLI/discovery boundary, visible-author parsing, original-Human local policy and local ledger replay.
+
+Real UAT forwarding and independent-process execution are pending. DSH Messaging/Runtime integration, model-driven A, two isolated Hosts, automatic WebSocket delivery and the complete mobile-to-A-to-B scenario remain pending. Keep T4 open. No Prod or merge.
+
+## Real UAT protocol qualification — 2026-10-18 JST
+
+Runtime `864b16d85a055397e255d012042bec0b07a9964e`, Worker `bc7ed0f3-6409-4a1e-8680-a56bb1a594c2`, schemas D1/Org/Channel 5/4/5 passed guarded deployment smoke. Exact-runtime CI [39089599338](https://github.com/BotHarness/tob/actions/runs/39089599338) passed.
+
+Using the existing synthetic ordinary users and public CLI, the member submitted a request to A; a separate CLI process forwarded it to B; another Node process executed B's fixed check and returned its result. Original Human, capability and deadline matched the parent. An identical forward returned the same child. A fresh B process replay executed zero additional checks. A's parent execution and B's second hop were refused. A second request whose original Human was excluded by B's local policy produced `LOCAL_POLICY_DENIED` with zero execution. CLI readback found exactly six correlated messages (two parents, two children, two results). Both test credentials were revoked and confirmed unusable; the users' prior organization selections were restored.
+
+[Sanitized assertions](evidence/work-forwarding-uat.json) record this bounded result. No WorkOS registration/settings changes, Human account changes, new native window, Prod or merge. This is public-protocol/independent-process evidence, **not** two DSH Hosts, model-driven forwarding or a new mobile UI run. T4 remains active for those owning-module/runtime seams.
+
+The identity endpoint was deployed and read through the formal CLI in UAT at `3eeed5b05782276b1a02cc2412dd04ab0ec60bca` (Worker `02beb5ec-1804-468d-9318-89e06467377c`). Two distinct channel-scoped Agents returned their expected actor, owner, organization and channel; private credential files were retained solely for the upcoming isolated Host gate. See `docs/evidence/agent-identity-uat.json`. The first preparation attempt omitted the CLI library runtime argument; retry reused the already recorded operation IDs. This is identity qualification, not two-Host communication or a repeat of the earlier forwarding runtime gate.
+
+## Native two-Host follow-up — 2026-10-18 JST
+
+DeepSeekBot Draft [#2157](https://github.com/BotHarness/DeepSeekBot/pull/2157), runtime `f02c2423bce02c264548193ac738013f4eac83ab`, qualified native model A→B fixed health work against unchanged UAT service `3eeed5b`. Two distinct local DSH Profiles used their own Bots, native Credentials and Operational Databases. A inspected/forwarded the accepted Source Event; B inspected/executed it and returned a result to the same cloud channel. Three canonical messages retained the original Human and deadline; A executed zero times, B once. Both Hosts restarted, and formal direct Tool replay returned the same child and zero additional executions/messages. Local work policies were restored.
+
+The first model request executed locally on A, so it is not counted as forwarding. A new request after an explicit dispatcher instruction passed. A fresh mobile→A→B run, WebSocket, organization-wide Agent membership and broader permission/revocation paths remain separate gates; T4 is not closed. This is two real Hosts on one machine, not proof of network or hardware diversity. No service redeployment, Prod change or merge accompanied this follow-up.
+
+## Phone → two native Hosts follow-up — 2026-10-18
+
+The assigned iOS Simulator now qualifies the complete bounded path: phone member presses Request health check for A; A's real native model forwards; B's native model executes; phone reloads and displays all three same-channel records. Canonical sequences16/17/18 preserve the original Human/deadline; local execution ledgers record A0/B1. Mobile JS247a727b8 / installed native494a20f1e / Host runtimef02c2423b / cloud3eeed5b. [Screenshots, recordings and assertions](https://github.com/BotHarness/DeepSeekBot/pull/2157) are pinned to evidence-only head d90f28bca.
+
+Independent synthetic staging authentication allowed unattended verification: UI refresh rotated credentials, cold restart retained the session, mobile logout revoked only itself and rejected latest refresh while A/B CLI sessions stayed valid. This run does not re-prove Hosted AuthKit/PKCE. Temporary Host policies were restored, own driver/Metro stopped and the shared device window released. No service redeployment, WorkOS setting change, Prod operation or merge.
+
+This supersedes the mobile-to-two-Host pending statement above. T4/overall goal remain open for WebSocket, organization-wide Agent membership and wider live permission/revocation coverage. Fixed health work, same-Mac isolated Hosts and one iOS Simulator do not establish arbitrary work, hardware diversity, Android or Human QA.

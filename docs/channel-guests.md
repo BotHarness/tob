@@ -58,3 +58,7 @@ Runtime `6226ec3af48d7c446c95421290aaa280ce8a7490`, Worker version `b8e22111-d97
 [DeepSeekBot Draft #2150](https://github.com/BotHarness/DeepSeekBot/pull/2150) final runtime `bc08a47e6f060fe6caa6b879c4b2464e12d69e05`: phone owner invited B, B accepted without organization membership/selection change and sent a message read by owner CLI. Rejoin used a new floor; refresh/cold restart preserved access only to the new message. Revocation refused the old phone session and independent CLI. Owner phone also revoked an accepted grant at maximum text size. Six form and composer size/theme cases passed after correcting title and keyboard defects. Independent phone logout revoked only its own session; CLI sessions were retained.
 
 The linked PR evidence records intermediate runtime provenance and first failures. This is synthetic-user iOS Simulator proof, not Hosted AuthKit, email delivery, Android, physical phone or Human QA. Shared Simulator resources were restored and released.
+
+## Confirmed invitation scope
+
+The Human clarified that a channel-level invitation admits its recipient only to that channel. It does not grant organization membership, organization directory access or access to other channels. “Invite group channel” is not a group-to-group bridge or federation requirement. Existing organization members still see all organization channels; the guest grant is the only additional scope needed for this slice.

@@ -7,6 +7,7 @@ export type WorkRequest = {
   requesterUserId: string;
   targetActorId: string;
   capability: 'health-check';
+  delegation?: { parentRequestId: string; actorId: string; hops: 1 };
   createdAt: string;
   expiresAt: string;
 };
@@ -70,6 +71,7 @@ export function parseWorkRequest(value: unknown): WorkRequest {
       'capability',
       'createdAt',
       'expiresAt',
+      'delegation',
     ]) ||
     v.version !== 1 ||
     !validRequestId(v.requestId) ||
@@ -82,6 +84,21 @@ export function parseWorkRequest(value: unknown): WorkRequest {
     Date.parse(input.expiresAt) - Date.parse(v.createdAt) > 600000
   )
     throw new ClientError('INVALID_WORK_INPUT');
+  let delegation: WorkRequest['delegation'];
+  if (v.delegation !== undefined) {
+    const d = record(v.delegation);
+    if (
+      !exact(d, ['parentRequestId', 'actorId', 'hops']) ||
+      !validRequestId(d.parentRequestId) ||
+      d.parentRequestId === v.requestId ||
+      typeof d.actorId !== 'string' ||
+      !/^ag_[a-f0-9]{64}$/.test(d.actorId) ||
+      d.actorId === input.targetActorId ||
+      d.hops !== 1
+    )
+      throw new ClientError('INVALID_WORK_INPUT');
+    delegation = { parentRequestId: d.parentRequestId, actorId: d.actorId, hops: 1 };
+  }
   return {
     version: 1,
     requestId: v.requestId,
@@ -89,6 +106,7 @@ export function parseWorkRequest(value: unknown): WorkRequest {
     requesterUserId: v.requesterUserId,
     ...input,
     createdAt: v.createdAt,
+    ...(delegation ? { delegation } : {}),
   };
 }
 export function parseWorkResult(value: unknown): WorkResult {
@@ -143,4 +161,27 @@ export function parseWorkResult(value: unknown): WorkResult {
     reason: v.reason as WorkResult['reason'],
     ...(diagnostics ? { diagnostics } : {}),
   };
+}
+
+export function parseForwardInput(value: unknown) {
+  const v = record(value);
+  if (
+    !exact(v, ['targetActorId']) ||
+    typeof v.targetActorId !== 'string' ||
+    !/^ag_[a-f0-9]{64}$/.test(v.targetActorId)
+  )
+    throw new ClientError('INVALID_WORK_INPUT');
+  return { targetActorId: v.targetActorId };
+}
+export function parseWorkMessage(value: unknown): WorkRequest {
+  const m = record(value),
+    r = parseWorkRequest(m.payload);
+  if (
+    m.kind !== 'work_request' ||
+    (r.delegation
+      ? m.authorType !== 'agent' || m.authorId !== r.delegation.actorId
+      : m.authorType !== 'human' || m.authorId !== r.requesterUserId)
+  )
+    throw new ClientError('INVALID_WORK_MESSAGE');
+  return r;
 }
