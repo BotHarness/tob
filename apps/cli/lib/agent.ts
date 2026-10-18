@@ -26,14 +26,16 @@ export const readAgentFile = (path: string) => parseAgentCredential(readPrivateJ
 export async function agentCommand(args: string[], signal?: AbortSignal) {
   const command = args[1];
   const options: Record<string, string> = {};
-  if (!['history', 'send', 'forward'].includes(command)) throw new ClientError('USAGE');
+  if (!['history', 'send', 'forward', 'identity'].includes(command)) throw new ClientError('USAGE');
   for (let n = 2; n < args.length; n += 2) {
     if (
       !(
         command === 'forward'
           ? ['--credential-file', '--request', '--target']
-          : command === 'history'
-            ? ['--credential-file', '--after']
+          : command === 'identity'
+            ? ['--credential-file']
+            : command === 'history'
+              ? ['--credential-file', '--after']
             : ['--credential-file', '--text-file', '--operation']
       ).includes(args[n]) ||
       args[n + 1] === undefined ||
@@ -57,7 +59,8 @@ export async function agentCommand(args: string[], signal?: AbortSignal) {
   };
   const base = config.server + '/api/agent-channels/' + channelId + '/messages';
   let response: Response;
-  if (command === 'forward')
+  if (command === 'identity') response = await request(config.server + '/api/agent-channels/' + channelId + '/identity', { headers }, signal);
+  else if (command === 'forward')
     response = await request(
       config.server +
         '/api/agent-channels/' +

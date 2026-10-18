@@ -55,6 +55,13 @@ export async function authenticatedAgent(env: Env, header: string | undefined, c
 }
 export const agentMessages = new Hono<{ Bindings: Env }>()
   .use("*", limit)
+  .get("/:channelId/identity", async c => {
+    const { channel, actorId, secretHash } = await authenticatedAgent(c.env, c.req.header("Authorization"), c.req.param("channelId"));
+    // Issuer checks may yield. Re-read the local grant before exposing its identity.
+    const ctx = await channel.agentContext(c.req.param("channelId"), actorId, secretHash);
+    if (!ctx) throw new AccessError("AGENT_ACCESS_DENIED", 403);
+    return c.json({ channelId: c.req.param("channelId"), organizationId: ctx.organizationId, agent: ctx.agent });
+  })
   .get("/:channelId/messages", async c => {
     const raw = c.req.query("after") ?? "0";
     if (!/^(0|[1-9][0-9]*)$/.test(raw) || !Number.isSafeInteger(Number(raw))) throw new AccessError("INVALID_CURSOR", 400);

@@ -922,3 +922,14 @@ it('a target owned by another active owner cannot borrow a revoked forwarding ow
  f.members[0].role.slug='member';
  expect(await(await f.workAgent(v.message.payload.requestId,'authorize',undefined,other.actorId)).json()).toEqual({error:{code:'REQUESTER_ACCESS_DENIED'}});
 });
+
+it('Agent identity discovery reports canonical channel and actor without exposing credentials or accepting another channel',async()=>{
+ const f=await agentFixture();const a=await(await f.issueAgent()).json() as {actorId:string};
+ const call=(channel=f.channel.channelId)=>request('/api/agent-channels/'+channel+'/identity',{headers:{Authorization:'Bearer tob_agent_'+a.actorId+'.'+f.secret}});
+ const response=await call();expect(response.status).toBe(200);
+ const identity=await response.json();expect(identity).toMatchObject({channelId:f.channel.channelId,organizationId:'org_invites',agent:{actorId:a.actorId,ownerUserId:'user_a',state:'active',kind:'agent'}});
+ expect(JSON.stringify(identity)).not.toContain(f.secret);expect(JSON.stringify(identity)).not.toContain(f.secretHash);
+ expect((await call(f.sibling.channelId)).status).toBe(403);
+ await f.call(f.base+'/agents/'+a.actorId+'/revoke','user_a','POST');
+ expect((await call()).status).toBe(403);
+});

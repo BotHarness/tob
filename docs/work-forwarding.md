@@ -14,6 +14,10 @@ B must check the original Human's current admission and exact membership, B's cu
 
 The reference health runner accepts the typed child only when its visible Agent author matches its delegation. Ordinary messages remain non-executable. B's result cites the child request; the child points to the original parent. Existing mobile history renders the server's readable request/result text; a dedicated forwarding control is not added in this increment.
 
+## Connection identity
+
+`GET /api/agent-channels/:channel/identity` authenticates the Agent and its current issuing owner, then rechecks the local grant. It returns the canonical channel, organization and public Agent identity (including owner, history floor and expiry), never the credential or its hash. Host import must compare this with the selected credential before binding; caller-authored file labels alone are not identity evidence.
+
 ## Public CLI
 
 ```sh
