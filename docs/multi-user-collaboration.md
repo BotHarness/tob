@@ -8,7 +8,7 @@ This supersedes the admin-only application admission restriction in T1. The prot
 4. Invite independently authenticated Agents; show identities and allow bounded message interaction. A Bot owner's explicit local capability policy continues to govern work.
 5. Two isolated local DSH Hosts use the public Cloudflare UAT endpoint to exchange messages/work/results. Prove cloud persistence, independent identities, reconnect replay and non-duplicate execution. This establishes cross-Host cloud transport, not physical hardware/network diversity.
 
-The meaning of inviting a "group channel" into another channel is awaiting Human clarification. Do not implement federation or bridging implicitly.
+The Human confirmed that "group channel invitation" means inviting a recipient only to the selected channel. Acceptance must not create organization membership or reveal sibling channels. This is the existing direct-channel guest scope, not federation or a group-to-group bridge.
 
 ## First slice contract
 
