@@ -24,3 +24,10 @@ export const managementOperation = sqliteTable("management_operation", {
   state: text("state").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+export const organizationLink = sqliteTable("organization_link", {
+  orgId: text("org_id").primaryKey(),
+  workosOrgId: text("workos_org_id").notNull().unique(),
+  lifecycle: text("lifecycle", { enum: ["creating", "active", "disabled"] }).notNull(),
+  createdAt: text("created_at").notNull(),
+}, t => [check("organization_lifecycle", sql`${t.lifecycle} IN ('creating', 'active', 'disabled')`)]);

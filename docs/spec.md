@@ -1,3 +1,5 @@
+> Current T1 organization slice: [authority, API, storage and recovery](t1-organizations.md). Later table designs remain target scope, not a claim that all T1 tables are implemented.
+
 # TOB — WorkOS architecture and first heterogeneous-agent path
 
 Canonical delivery specification: https://github.com/BotHarness/tob/issues/1

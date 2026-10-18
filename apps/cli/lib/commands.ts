@@ -42,8 +42,19 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
       return { imported: true, instanceId: c.instanceId, server: c.server, environment: c.environment, sessionCleared: changed };
     });
   }
-  const [command, flag, server] = args;
-  if (!["login", "whoami", "refresh", "logout"].includes(command) || flag !== "--server" || args.length !== 3) throw new ClientError("USAGE");
+  const isOrg = args[0] === "org";
+  const orgCommand = isOrg ? args[1] : undefined;
+  const options: Record<string, string> = {};
+  if (isOrg) {
+    if (!["list", "create", "use", "show", "update"].includes(orgCommand ?? "")) throw new ClientError("USAGE");
+    for (let n = 2; n < args.length; n += 2) {
+      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
+      options[args[n]] = args[n+1];
+    }
+  }
+  const command = isOrg ? "org" : args[0];
+  const server = isOrg ? options["--server"] : args[2];
+  if ((!isOrg && (!["login", "whoami", "refresh", "logout"].includes(command) || args[1] !== "--server" || args.length !== 3)) || !server) throw new ClientError("USAGE");
   serverOrigin(server);
   const c = store.configs().find(c => c.server === server);
   if (!c) throw new ClientError("INSTANCE_NOT_IMPORTED");
@@ -65,10 +76,10 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
       const i = await identity(c, session); session.userId = i.userId;
       store.putSession(c.instanceId, session); return i;
     };
-    const refresh = async () => {
+    const refresh = async (organizationId?: string) => {
       const saved = ensureSession();
       await checkDiscovery(c, rt.signal);
-      const r = await request(c.auth.tokenEndpoint, form({ client_id: c.auth.clientId, grant_type: "refresh_token", refresh_token: saved.refreshToken }), rt.signal);
+      const r = await request(c.auth.tokenEndpoint, form({ client_id: c.auth.clientId, grant_type: "refresh_token", refresh_token: saved.refreshToken, ...(organizationId ? { organization_id: organizationId } : {}) }), rt.signal);
       const value = await responseJson(r);
       if (!r.ok) {
         if (r.status === 400 && value.error === "invalid_grant") { store.clearSession(c.instanceId); session = undefined; throw new ClientError("LOGIN_REQUIRED"); }
@@ -116,12 +127,42 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
       }
       if (!session) throw new ClientError("LOGIN_EXPIRED");
     }
+    if (isOrg) {
+      let i = await freshIdentity();
+      const call = async (path: string, init: RequestInit = {}) => {
+        await checkDiscovery(c, rt.signal);
+        const r = await request(c.server + "/api/organizations" + path, { ...init, headers: { ...init.headers, Authorization: "Bearer " + ensureSession().accessToken } }, rt.signal);
+        const value = await responseJson(r);
+        if (!r.ok) {
+          const code = (value.error as { code?: unknown })?.code;
+          throw new ClientError(typeof code === "string" && /^[A-Z_]{1,80}$/.test(code) ? code : "ORGANIZATION_UNAVAILABLE");
+        }
+        return value;
+      };
+      if (orgCommand === "list") return call(options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : "");
+      if (orgCommand === "create") {
+        if (!options["--name"] || !options["--operation"]) throw new ClientError("USAGE");
+        return call("", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": options["--operation"] }, body: JSON.stringify({ name: options["--name"] }) });
+      }
+      const id = options["--id"] ?? i.organizationId;
+      if (!id || !/^org_[A-Za-z0-9]+$/.test(id)) throw new ClientError("ORGANIZATION_NOT_SELECTED");
+      if (orgCommand === "use") {
+        await call("/" + id + "/access");
+        i = await refresh(id);
+        if (i.organizationId !== id) throw new ClientError("ORGANIZATION_TOKEN_MISMATCH");
+        return { ...await call("/" + id), selected: true };
+      }
+      if (i.organizationId !== id) throw new ClientError("ORGANIZATION_TOKEN_REQUIRED");
+      if (orgCommand === "show") return call("/" + id);
+      if (options["--description"] === undefined || !/^[1-9][0-9]*$/.test(options["--version"] ?? "")) throw new ClientError("USAGE");
+      return call("/" + id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ description: options["--description"], version: Number(options["--version"]) }) });
+    }
     const i = command === "refresh" ? await refresh() : await freshIdentity();
     await checkDiscovery(c, rt.signal);
     const me = await request(c.server + "/api/me", { headers: { Authorization: "Bearer " + ensureSession().accessToken } }, rt.signal);
     if (!me.ok) throw new ClientError(me.status === 403 ? "INSTANCE_ACCESS_DENIED" : me.status === 401 ? "UNAUTHENTICATED" : "INSTANCE_UNAVAILABLE");
     const body = await responseJson(me);
     if (body.userId !== i.userId || body.instanceId !== c.instanceId || body.instanceRole !== "admin") throw new ClientError("IDENTITY_RESPONSE_MISMATCH");
-    return { userId: i.userId, instanceId: c.instanceId, server: c.server, instanceRole: "admin", ...(command === "refresh" ? { refreshed: true } : {}) };
+    return { userId: i.userId, instanceId: c.instanceId, server: c.server, instanceRole: "admin", ...(i.organizationId ? { organizationId: i.organizationId } : {}), ...(command === "refresh" ? { refreshed: true } : {}) };
   });
 }
