@@ -23,6 +23,8 @@ export const channelWork = sqliteTable("channel_work", {
   requestId: text("request_id").primaryKey(),
   sequence: integer("sequence").notNull().unique(),
   requesterMembershipId: text("requester_membership_id").notNull(),
+  parentRequestId: text("parent_request_id").unique(),
+  executionAuthorized: integer("execution_authorized", { mode: "boolean" }).notNull().default(false),
   requesterUserId: text("requester_user_id").notNull(),
   targetActorId: text("target_actor_id").notNull(),
   expiresAt: text("expires_at").notNull(),

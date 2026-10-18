@@ -17,6 +17,7 @@ import { readAgentFile, readPrivateJson } from '../../apps/cli/lib/agent.ts';
 import { ClientError, connectionKey } from '../contracts/instance.ts';
 import {
   parseWorkRequest,
+  parseWorkMessage,
   parseWorkResult,
   type WorkRequest,
   type WorkResult,
@@ -317,13 +318,8 @@ export async function runHealthOnce(credentialFile: string, directory: string, a
         processed = 0;
       for (const m of page.messages) {
         if (m.kind !== 'work_request') continue;
-        const r = parseWorkRequest(m.payload);
-        if (
-          m.authorType !== 'human' ||
-          m.authorId !== r.requesterUserId ||
-          r.channelId !== c.channelId
-        )
-          throw new ClientError('INVALID_WORK_MESSAGE');
+        const r = parseWorkMessage(m);
+        if (r.channelId !== c.channelId) throw new ClientError('INVALID_WORK_MESSAGE');
         if (r.targetActorId !== c.actorId) continue;
         const result = await processHealthRequest(ledger, r, policy, {
           authorize: async (req) =>

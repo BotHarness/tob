@@ -23,7 +23,7 @@ it("migrates both real SQLite bindings and repeated migrations keep data", async
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
   const ready = await request("/readyz");
   expect(ready.status).toBe(200);
-  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 5, orgSchemaVersion: 4, channelSchemaVersion: 4, businessEnabled: true });
+  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 5, orgSchemaVersion: 4, channelSchemaVersion: 5, businessEnabled: true });
   expect(await env.INSTANCE_DB.prepare("SELECT config_version FROM instance_config").first("config_version")).toBe(7);
   await expect(env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (2,'admin_only','admin_only',1)").run()).rejects.toThrow();
 });
@@ -820,4 +820,105 @@ it('revocation during work authorization yields no new start approval or result'
  });
  expect((await f.workAgent(id)).status).toBe(403);
  expect((await f.workAgent(id,'result',{version:1,requestId:id,state:'rejected',environment:'reference',executionCount:0,reason:'LOCAL_POLICY_DENIED'})).status).toBe(403);
+});
+
+async function forwardingFixture() {
+  const f = await workFixture();
+  f.members.push({id:'om_member',user_id:'user_b',organization_id:'org_invites',status:'active',role:{slug:'member'},created_at:'2026-01-01T00:00:00Z'});
+  const b = await (await f.issueAgent('Target B','forward-target-agent-0001')).json() as {actorId:string};
+  const c = await (await f.issueAgent('Target C','forward-target-agent-0002')).json() as {actorId:string};
+  const root = await (await f.create(f.input,'forward-root-operation-0001','user_b')).json() as {message:{payload:import('../packages/contracts/work').WorkRequest}};
+  const rootId = root.message.payload.requestId;
+  const forward = (targetActorId=b.actorId, id=rootId, actorId=f.a.actorId, extra={})=> f.workAgent(id,'forward',{targetActorId,...extra},actorId);
+  return {...f,b,c,rootId,root:root.message.payload,forward};
+}
+it('forwarding preserves the original member and deadline, survives eviction and commits one correlated child',async()=>{
+ const f=await forwardingFixture();
+ const response=await f.forward();expect(response.status).toBe(200);
+ const value=await response.json() as {message:{payload:import('../packages/contracts/work').WorkRequest}};
+ const child=value.message.payload;
+ expect(value).toMatchObject({replayed:false,message:{sequence:2,authorType:'agent',authorId:f.a.actorId,kind:'work_request'}});
+ expect(child).toEqual({...f.root,requestId:child.requestId,targetActorId:f.b.actorId,delegation:{parentRequestId:f.rootId,actorId:f.a.actorId,hops:1}});
+ expect(child.requestId).not.toBe(f.rootId);
+ await evictDurableObject(env.CHANNELS.getByName(f.channel.channelId));
+ expect(await(await f.forward()).json()).toMatchObject({replayed:true,message:{sequence:2,payload:child}});
+ expect((await f.forward(f.c.actorId)).status).toBe(409);
+ expect(await(await f.workAgent(f.rootId)).json()).toEqual({error:{code:'WORK_ALREADY_FORWARDED'}});
+ expect(await(await f.workAgent(child.requestId,'authorize',undefined,f.b.actorId)).json()).toEqual({request:child});
+ expect(await(await f.forward(f.c.actorId,child.requestId,f.b.actorId)).json()).toEqual({error:{code:'FORWARD_LIMIT'}});
+ const result={version:1,requestId:child.requestId,state:'completed',environment:'target-b',executionCount:1,reason:'OK',diagnostics:{platform:'linux',architecture:'x64',runtime:'v24.21.0'}};
+ expect(await(await f.workAgent(child.requestId,'result',result,f.b.actorId)).json()).toMatchObject({message:{sequence:3,authorId:f.b.actorId,payload:result}});
+ expect((await f.workAgent(f.rootId,'result',{...result,requestId:f.rootId})).status).toBe(403);
+ expect(await(await f.workAgent(child.requestId,'result',result,f.b.actorId)).json()).toMatchObject({replayed:true,message:{sequence:3}});
+});
+it('forwarding refuses fabricated source or deadlines, self loops and non-target Agents',async()=>{
+ const f=await forwardingFixture();
+ for(const extra of [{requesterUserId:'user_admin'},{expiresAt:new Date(Date.now()+600000).toISOString()},{capability:'shell'},{delegation:{hops:0}}])expect((await f.forward(f.b.actorId,f.rootId,f.a.actorId,extra)).status).toBe(400);
+ expect((await f.forward(f.b.actorId,f.rootId,f.c.actorId)).status).toBe(403);
+ expect(await(await f.forward(f.a.actorId)).json()).toEqual({error:{code:'FORWARD_LIMIT'}});
+ expect((await f.forward('ag_'+'f'.repeat(64))).status).toBe(403);
+ expect(await(await f.call(f.base+'/messages')).json()).toMatchObject({messages:[{sequence:1}]});
+});
+it('execution authorization wins against forwarding, while forwarding wins against execution authorization',async()=>{
+ const f=await forwardingFixture();
+ const [authorization,forward]=await Promise.all([f.workAgent(f.rootId),f.forward()]);
+ expect([authorization.status,forward.status].sort()).toEqual([200,403]);
+ await evictDurableObject(env.CHANNELS.getByName(f.channel.channelId));
+ if(authorization.status===200)expect(await(await f.forward()).json()).toEqual({error:{code:'WORK_ALREADY_STARTED'}});
+ else expect(await(await f.workAgent(f.rootId)).json()).toEqual({error:{code:'WORK_ALREADY_FORWARDED'}});
+});
+it('an Agent rejection is terminal for forwarding even without an execution authorization',async()=>{
+ const f=await forwardingFixture();
+ expect((await f.workAgent(f.rootId,'result',{version:1,requestId:f.rootId,state:'rejected',environment:'a',executionCount:0,reason:'LOCAL_POLICY_DENIED'})).status).toBe(200);
+ expect(await(await f.forward()).json()).toEqual({error:{code:'WORK_ALREADY_STARTED'}});
+});
+it('the original membership stays authoritative after forwarding and cannot be replaced by a rejoin',async()=>{
+ const f=await forwardingFixture();
+ const v=await(await f.forward()).json() as {message:{payload:{requestId:string}}};
+ f.members[1].status='inactive';
+ expect(await(await f.workAgent(v.message.payload.requestId,'authorize',undefined,f.b.actorId)).json()).toEqual({error:{code:'REQUESTER_ACCESS_DENIED'}});
+ f.members[1].status='active';f.members[1].id='om_new';
+ expect((await f.workAgent(v.message.payload.requestId,'authorize',undefined,f.b.actorId)).status).toBe(403);
+});
+it('revoking the forwarding Agent while the target checks identity prevents execution authorization',async()=>{
+ const f=await forwardingFixture();
+ const v=await(await f.forward()).json() as {message:{payload:{requestId:string}}};
+ const provider=vi.mocked(globalThis.fetch).getMockImplementation()!;let checks=0;
+ vi.mocked(globalThis.fetch).mockImplementation(async(input,init)=>{
+  if(String(input).includes('/organization_memberships?')&&++checks===2) await env.CHANNELS.getByName(f.channel.channelId).revokeAgent(f.channel.channelId,{id:'user_a',type:'human',organizationId:'org_invites',historyFrom:'1970-01-01T00:00:00.000Z'},f.a.actorId);
+  return provider(input,init);
+ });
+ expect((await f.workAgent(v.message.payload.requestId,'authorize',undefined,f.b.actorId)).status).toBe(403);
+});
+it('expiration during forwarding identity checks commits no child',async()=>{
+ const f=await forwardingFixture();const provider=vi.mocked(globalThis.fetch).getMockImplementation()!;let checks=0;
+ vi.mocked(globalThis.fetch).mockImplementation(async(input,init)=>{
+  if(String(input).includes('/organization_memberships?')&&++checks===2)await runInDurableObject(env.CHANNELS.getByName(f.channel.channelId),(_i,s)=>{s.storage.sql.exec("UPDATE channel_message SET payload=json_set(payload,'$.expiresAt','2000-01-01T00:00:00.000Z') WHERE kind='work_request'");});
+  return provider(input,init);
+ });
+ expect(await(await f.forward()).json()).toEqual({error:{code:'REQUEST_EXPIRED'}});
+ expect(await(await f.call(f.base+'/messages')).json()).toMatchObject({messages:[{sequence:1}]});
+});
+it('a finished result cannot obtain a later execution authorization',async()=>{
+ const f=await workFixture();const v=await(await f.create()).json() as {message:{payload:{requestId:string}}};const id=v.message.payload.requestId;
+ expect((await f.workAgent(id,'result',{version:1,requestId:id,state:'rejected',environment:'a',executionCount:0,reason:'LOCAL_POLICY_DENIED'})).status).toBe(200);
+ expect(await(await f.workAgent(id)).json()).toEqual({error:{code:'WORK_ALREADY_FINISHED'}});
+});
+it('competing target selections produce only one child and a failed child write leaves no message',async()=>{
+ const f=await forwardingFixture();
+ await runInDurableObject(env.CHANNELS.getByName(f.channel.channelId),(_i,s)=>{s.storage.sql.exec("CREATE TRIGGER fail_forward BEFORE INSERT ON channel_work WHEN NEW.parent_request_id IS NOT NULL BEGIN SELECT RAISE(ABORT,'INJECTED_FORWARD_FAILURE'); END");});
+ expect((await f.forward()).status).toBe(503);
+ expect(await(await f.call(f.base+'/messages')).json()).toMatchObject({messages:[{sequence:1}]});
+ await runInDurableObject(env.CHANNELS.getByName(f.channel.channelId),(_i,s)=>{s.storage.sql.exec('DROP TRIGGER fail_forward');});
+ const responses=await Promise.all([f.forward(f.b.actorId),f.forward(f.c.actorId)]);
+ expect(responses.map(r=>r.status).sort()).toEqual([200,409]);
+ const page=await(await f.call(f.base+'/messages')).json() as {messages:unknown[]};expect(page.messages).toHaveLength(2);
+});
+it('a target owned by another active owner cannot borrow a revoked forwarding owner membership',async()=>{
+ const f=await forwardingFixture();
+ f.members.push({id:'om_other_owner',user_id:'user_c',organization_id:'org_invites',status:'active',role:{slug:'owner'},created_at:'2026-01-01T00:00:00Z'});
+ const other=await(await f.call(f.base+'/agents','user_c','POST',{name:'C owner target',secretHash:f.secretHash},'other-owner-agent-0001')).json() as {actorId:string};
+ const v=await(await f.forward(other.actorId)).json() as {message:{payload:{requestId:string}}};
+ f.members[0].role.slug='member';
+ expect(await(await f.workAgent(v.message.payload.requestId,'authorize',undefined,other.actorId)).json()).toEqual({error:{code:'REQUESTER_ACCESS_DENIED'}});
 });
