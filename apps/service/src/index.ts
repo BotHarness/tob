@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { html } from "hono/html";
+import { invitationLink, parseInvitationLink } from "../../../packages/contracts/invitation-link.ts";
 import { drizzle } from "drizzle-orm/d1";
 import { admit, AccessError } from "./auth/admission";
 import { organizations, createOrganization } from "./organizations";
@@ -27,6 +29,18 @@ app.onError((_error, c) => {
   return c.json({ error: { code: "STORAGE_UNAVAILABLE" } }, 503);
 });
 const api = app
+  .get("/join", c => {
+    const raw = c.env.PUBLIC_BASE_URL + new URL(c.req.url).pathname + new URL(c.req.url).search;
+    let target;
+    try { target = parseInvitationLink(raw); }
+    catch { return c.text("Invalid invitation link", 400); }
+    const link = invitationLink(target.server, target.invitationId);
+    const appLink = "ai.botharness.deepseekbot.dev:/cloud-join?link=" + encodeURIComponent(link);
+    c.header("Referrer-Policy", "no-referrer");
+    c.header("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
+    // No recipient, workspace or channel metadata is exposed before authentication.
+    return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Join a cloud conversation</title></head><body><main><h1>Join a cloud conversation</h1><p>Service: ${target.server}</p><p>Open this invitation in DeepSeekBot and sign in with the invited account. You will review the destination before joining.</p><p><a href="${appLink}">Open in DeepSeekBot</a></p><p>You can also paste this invitation link into “Join with invitation” in the app.</p></main></body></html>`);
+  })
   .get("/.well-known/open-cloud-groups", (c) => c.json(publicInstance({ instanceId: c.env.INSTANCE_ID, environment: c.env.DEPLOYMENT_ENV, server: c.env.PUBLIC_BASE_URL, clientId: c.env.WORKOS_CLIENT_ID, issuer: c.env.WORKOS_ISSUER, authkitDomain: c.env.WORKOS_AUTH_DOMAIN, mobileRedirectUri: c.env.MOBILE_REDIRECT_URI })))
   .post("/api/auth/logout", async (c) => {
     let identity;

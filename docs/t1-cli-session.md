@@ -87,3 +87,17 @@ The successful final replay used the same Human-approved session, restored from 
 Checks for this source: typecheck/build, 13 workerd tests, 16 Node tests, plus 2 wizard tests in CI. Live configuration-drift, crash/power-loss, cross-device and native-mobile scenarios were not run; their source tests/design must not be described as cloud or Human QA evidence. WorkOS access JWTs may remain valid until expiry after revocation; immediate access-token invalidation remains a later T1 gate.
 
 Remaining T1 work: mobile QR/import and native PKCE/secure storage, independent phone/CLI organization access, owner/member setup and organization creation/retry, signed identity-event reconciliation and measured revocation behavior, and native Human QA. T1 stays open; T2–T5 and Production are untouched.
+
+## Recipient-bound invitation links (next tracer, validation in progress)
+
+An invitation locator has the form `https://<instance>/join?invitation=<invitation-id>`. It contains no WorkOS token or Agent credential and does not grant access. The public landing only displays the service and opens the native client. Destination metadata requires a verified invited account through `GET /api/invitations/:id` or `GET /api/channel-invitations/:id`; neither GET accepts the invitation. Existing POST acceptance and revocation remain authoritative.
+
+```sh
+node apps/cli/tob.mjs invitation-link https://groups.example ci_<id>
+node apps/cli/tob.mjs channel-invite preview --server https://groups.example --link 'https://groups.example/join?invitation=ci_<id>'
+node apps/cli/tob.mjs channel-invite accept --server https://groups.example --link 'https://groups.example/join?invitation=ci_<id>'
+```
+
+Use `invite` instead of `channel-invite` for workspace invitations. The explicit server must match the link and an independently imported configuration; link parsing never imports trust or logs into another server. A wrong account gets no destination metadata. A revoked or expired invitation cannot be accepted. Mobile adds a device-local pending target through login/restart, then explicitly accepts and opens the selected guest channel without obtaining workspace membership.
+
+Local validation: 62 workerd tests and 20 CLI tests passed, including recipient preview/no-join, wrong-account denial, revoked acceptance denial, neutral landing and cross-server credential refusal. This records source/local runtime evidence only. UAT deployment, real invitation replay and native screenshots/recording for this new slice remain pending; no Prod change or merge is implied. QR display/save and the unified cloud workspace drawer are follow-up work.

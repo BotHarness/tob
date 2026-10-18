@@ -53,6 +53,15 @@ export const ownerGuestInvitations = new Hono<{ Bindings: Env }>()
   });
 export const guestInvitations = new Hono<{ Bindings: Env }>()
   .use("*", limit)
+  .get("/:id", async c => {
+    const user = await recipient(c.env, c.req.header("Authorization"));
+    const row = await indexed(c.env, c.req.param("id"));
+    const value = await c.env.CHANNELS.getByName(row.channelId).recipientGuestInvitation(row.invitationId, user.userId, user.email);
+    if (!value || !await localOrg(c.env, value.organizationId)) throw new AccessError("CHANNEL_INVITATION_ACCESS_DENIED", 403);
+    // Recipient verification precedes even the workspace identity projection.
+    const org = await c.env.ORGS.getByName(value.organizationId).read(value.organizationId);
+    return c.json({ ...value, organizationName: org.name });
+  })
   .get("/", async c => {
     const user = await recipient(c.env, c.req.header("Authorization"));
     const rows = await drizzle(c.env.INSTANCE_DB).select().from(channelInvitationDirectory).where(and(or(eq(channelInvitationDirectory.recipientEmail, user.email), eq(channelInvitationDirectory.acceptedUserId, user.userId)), gt(channelInvitationDirectory.invitationId, cursor(c.req.query("after"))))).orderBy(asc(channelInvitationDirectory.invitationId)).limit(51).all();

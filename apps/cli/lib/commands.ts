@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { invitationLink, parseInvitationLink } from "../../../packages/contracts/invitation-link.ts";
 import { agentCommand } from "./agent.ts";
 import { parseWorkInput } from "../../../packages/contracts/work.ts";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -22,6 +23,8 @@ async function identity(c: InstanceConfig, s: Session) {
   return i;
 }
 export async function execute(args: string[], rt: Runtime): Promise<unknown> {
+  if (args[0] === "invitation-link" && args.length === 3)
+    return { url: invitationLink(args[1], args[2]), recipientBound: true };
   if (args[0] === "health" && args[1] === "--server" && args.length === 3) {
     const url = new URL(args[2]);
     if (url.username || url.password || url.search || url.hash || url.pathname !== "/" || !(url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))) throw new ClientError("INVALID_SERVER_ORIGIN");
@@ -59,11 +62,16 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
   const orgCommand = scoped ? args[1] : undefined;
   const options: Record<string, string> = {};
   if (scoped) {
-    if (!(isWork ? ["request"] : isAgent ? ["list", "create", "revoke"] : isOrg ? ["list", "create", "use", "show", "update"] : (isInvitation || isGuestInvite) ? ["inbox", "list", "send", "accept", "revoke"] : isGuest ? ["list", "show", "history", "send"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
+    if (!(isWork ? ["request"] : isAgent ? ["list", "create", "revoke"] : isOrg ? ["list", "create", "use", "show", "update"] : (isInvitation || isGuestInvite) ? ["inbox", "list", "send", "preview", "accept", "revoke"] : isGuest ? ["list", "show", "history", "send"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
     for (let n = 2; n < args.length; n += 2) {
-      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file", "--email", "--channel", "--agent", "--expires-at"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
+      if (!["--server", "--id", "--link", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file", "--email", "--channel", "--agent", "--expires-at"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
       options[args[n]] = args[n+1];
     }
+  }
+  if (options["--link"]) {
+    const target = parseInvitationLink(options["--link"]);
+    if (!(isInvitation || isGuestInvite) || !["preview", "accept"].includes(orgCommand ?? "") || options["--id"] || target.server !== options["--server"] || target.guest !== isGuestInvite) throw new ClientError("INVITATION_TARGET_MISMATCH");
+    options["--id"] = target.invitationId;
   }
   const command = args[0];
   const server = scoped ? options["--server"] : args[2];
@@ -152,6 +160,12 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
         }
         return value;
       };
+      if ((isInvitation || isGuestInvite) && orgCommand === "preview") {
+        const id = options["--id"] ?? "";
+        invitationLink(c.server, id);
+        if (id.startsWith("ci_") !== isGuestInvite) throw new ClientError("INVALID_INVITATION");
+        return call("/" + id, {}, isGuestInvite ? "/api/channel-invitations" : "/api/invitations");
+      }
       if (isWork) {
         const orgId = options["--org"] ?? i.organizationId;
         const channel = options["--channel"];
