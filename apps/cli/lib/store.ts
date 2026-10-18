@@ -2,6 +2,7 @@ import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdi
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { ClientError, parseInstance, type InstanceConfig } from "../../../packages/contracts/instance.ts";
+import { parseAgentCredential, type AgentCredential } from "../../../packages/contracts/agent.ts";
 export type Session = { version: 1; binding: string; userId: string | null; accessToken: string; refreshToken: string };
 export const digest = (text: string) => createHash("sha256").update(text).digest("hex");
 export class Store {
@@ -16,7 +17,7 @@ export class Store {
     }
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
     this.check(this.root, true);
-    for (const d of ["instances", "sessions", "locks"]) { mkdirSync(join(this.root, d), { recursive: true, mode: 0o700 }); this.check(join(this.root, d), true); }
+    for (const d of ["instances", "sessions", "locks", "agents"]) { mkdirSync(join(this.root, d), { recursive: true, mode: 0o700 }); this.check(join(this.root, d), true); }
   }
   private check(path: string, directory = false) {
     const s = lstatSync(path);
@@ -60,6 +61,9 @@ export class Store {
     try { writeFileSync(fd, JSON.stringify({ pid: process.pid })); fsyncSync(fd); return await action(); }
     finally { closeSync(fd); unlinkSync(path); }
   }
+  agentFile(id: string) { return this.file("agents", id); }
+  agent(id: string) { const value = this.read(this.agentFile(id)); return value === undefined ? undefined : parseAgentCredential(value); }
+  putAgent(id: string, credential: AgentCredential) { this.write(this.agentFile(id), credential); }
   configs(): InstanceConfig[] { return readdirSync(join(this.root, "instances")).filter(n => /^[a-f0-9]{64}\.json$/.test(n)).map(n => parseInstance(this.read(join(this.root, "instances", n)))); }
   config(id: string) { const v = this.read(this.file("instances", id)); return v === undefined ? undefined : parseInstance(v); }
   putConfig(c: InstanceConfig) { this.write(this.file("instances", c.instanceId), c); }

@@ -23,7 +23,7 @@ it("migrates both real SQLite bindings and repeated migrations keep data", async
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
   const ready = await request("/readyz");
   expect(ready.status).toBe(200);
-  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 5, orgSchemaVersion: 4, channelSchemaVersion: 2, businessEnabled: true });
+  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 5, orgSchemaVersion: 4, channelSchemaVersion: 3, businessEnabled: true });
   expect(await env.INSTANCE_DB.prepare("SELECT config_version FROM instance_config").first("config_version")).toBe(7);
   await expect(env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (2,'admin_only','admin_only',1)").run()).rejects.toThrow();
 });
@@ -688,4 +688,83 @@ it('guest grant accepts once under concurrency, survives eviction, and rejects d
   await env.INSTANCE_DB.prepare("UPDATE organization_link SET lifecycle='disabled' WHERE org_id='org_invites'").run();
   expect(await (await f.guest('/guest-channels')).json()).toMatchObject({ channels: [] });
   expect((await f.guest('/guest-channels/' + f.channel.channelId + '/messages')).status).toBe(403);
+});
+
+async function agentFixture() {
+  const f = await guestFixture();
+  const secret = 'b'.repeat(64);
+  const secretHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret))), b => b.toString(16).padStart(2, '0')).join('');
+  const issue = (name = 'Independent agent', key = 'agent-issue-operation-0001', hash = secretHash) => f.call(f.base + '/agents', 'user_a', 'POST', { name, secretHash: hash }, key);
+  const call = (actorId: string, method = 'GET', data?: unknown, channelId = f.channel.channelId, credential = secret, key = 'agent-message-operation-0001') => request('/api/agent-channels/' + channelId + '/messages', { method, headers: { Authorization: 'Bearer tob_agent_' + actorId + '.' + credential, 'Content-Type': 'application/json', 'Idempotency-Key': key }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+  return { ...f, secret, secretHash, issueAgent: issue, agentCall: call };
+}
+it('channel Agent has independent identity, post-join history and no organization or cross-channel authority', async () => {
+  const f = await agentFixture();
+  await f.call(f.base + '/messages', 'user_a', 'POST', { text: 'Before agent joined' }, 'before-agent-message');
+  const r = await f.issueAgent(); expect(r.status).toBe(200);
+  const a = await r.json() as { actorId: string };
+  expect(JSON.stringify(a)).not.toContain(f.secretHash); expect(JSON.stringify(a)).not.toContain(f.secret);
+  expect(a).toMatchObject({ kind: 'agent', historyAfter: 1, scopes: ['messages:read', 'messages:send'], state: 'active' });
+  expect(await (await f.agentCall(a.actorId)).json()).toMatchObject({ messages: [], nextCursor: 1 });
+  expect((await f.agentCall(a.actorId, 'GET', undefined, f.sibling.channelId)).status).toBe(403);
+  expect((await f.agentCall(a.actorId, 'GET', undefined, f.channel.channelId, 'c'.repeat(64))).status).toBe(403);
+  expect((await f.agentCall(a.actorId, 'POST', { text: 'forged', authorId: 'user_a' })).status).toBe(400);
+  const send = () => f.agentCall(a.actorId, 'POST', { text: 'Agent reply' });
+  expect(await (await send()).json()).toMatchObject({ replayed: false, message: { authorId: a.actorId, authorType: 'agent', sequence: 2 } });
+  expect(await (await send()).json()).toMatchObject({ replayed: true, message: { sequence: 2 } });
+  expect((await f.agentCall(a.actorId, 'POST', { text: 'conflict' })).status).toBe(409);
+  expect(await (await f.call(f.base + '/messages')).json()).toMatchObject({ messages: [{ text: 'Before agent joined' }, { authorType: 'agent', text: 'Agent reply' }] });
+  expect((await request('/api/organizations', { headers: { Authorization: 'Bearer tob_agent_' + a.actorId + '.' + f.secret } })).status).toBe(401);
+  expect(f.members).toHaveLength(1);
+});
+it('Agent issuance recovers after eviction, same-name identities differ, no secret in listings and revoked keys stay revoked', async () => {
+  const f = await agentFixture();
+  const a = await (await f.issueAgent()).json() as { actorId: string };
+  await evictDurableObject(env.CHANNELS.getByName(f.channel.channelId));
+  expect(await (await f.issueAgent()).json()).toEqual(a);
+  expect((await f.issueAgent('Changed')).status).toBe(409);
+  expect((await f.issueAgent('Independent agent', 'agent-issue-operation-0001', 'a'.repeat(64))).status).toBe(409);
+  const b = await (await f.issueAgent('Independent agent', 'agent-issue-operation-0002')).json() as { actorId: string };
+  expect(a.actorId).not.toBe(b.actorId);
+  const list = await (await f.call(f.base + '/agents')).json();
+  expect(list).toMatchObject({ agents: expect.arrayContaining([{ ...a }, { ...b }]) });
+  expect(JSON.stringify(list)).not.toContain('secretHash');
+  await f.call(f.base + '/agents/' + a.actorId + '/revoke', 'user_a', 'POST');
+  expect((await f.agentCall(a.actorId)).status).toBe(403);
+  expect((await f.agentCall(a.actorId, 'POST', { text: 'blocked' })).status).toBe(403);
+  expect(await (await f.issueAgent()).json()).toMatchObject({ state: 'revoked' });
+  expect((await f.agentCall(b.actorId)).status).toBe(200);
+});
+it('current issuer qualification, instance admission and credential expiry gate Agent access', async () => {
+  const f = await agentFixture();
+  const a = await (await f.issueAgent()).json() as { actorId: string };
+  f.members[0].role.slug = 'member';
+  expect((await f.issueAgent('Another', 'agent-issue-operation-0003')).status).toBe(403);
+  expect((await f.call(f.base + '/agents/' + a.actorId + '/revoke', 'user_a', 'POST')).status).toBe(403);
+  expect((await f.agentCall(a.actorId)).status).toBe(403);
+  f.members[0].role.slug = 'owner'; f.members[0].id = 'om_rejoined';
+  expect((await f.agentCall(a.actorId)).status).toBe(403);
+  f.members[0].id = 'om_owner'; f.controls.verified = false;
+  expect((await f.agentCall(a.actorId)).status).toBe(403);
+  f.controls.verified = true;
+  await env.INSTANCE_DB.prepare("UPDATE instance_config SET registration_mode='admin_only'").run();
+  expect((await f.agentCall(a.actorId)).status).toBe(403);
+  await enableUsers();
+  await runInDurableObject(env.CHANNELS.getByName(f.channel.channelId), (_instance, state) => { state.storage.sql.exec("UPDATE channel_agent SET expires_at='2000-01-01T00:00:00Z'"); });
+  expect((await f.agentCall(a.actorId)).status).toBe(403);
+});
+it('credential revoked while issuer verification yields cannot commit a later Agent send', async () => {
+  const f = await agentFixture();
+  const a = await (await f.issueAgent()).json() as { actorId: string };
+  const provider = vi.mocked(globalThis.fetch).getMockImplementation()!;
+  let revoked = false;
+  vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+    if (String(input).includes('/organization_memberships?') && !revoked) {
+      revoked = true;
+      await env.CHANNELS.getByName(f.channel.channelId).revokeAgent(f.channel.channelId, { id:'user_a',type:'human',organizationId:'org_invites',historyFrom:'1970-01-01T00:00:00.000Z' }, a.actorId);
+    }
+    return provider(input, init);
+  });
+  expect((await f.agentCall(a.actorId, 'POST', { text:'Must never commit' })).status).toBe(403);
+  expect(await (await f.call(f.base + '/messages')).json()).toMatchObject({messages:[]});
 });

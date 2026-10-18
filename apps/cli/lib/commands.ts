@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { agentCommand } from "./agent.ts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -26,6 +28,7 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
     for (const path of ["/healthz", "/readyz"]) { const r = await request(new URL(path, url).href); if (!r.ok) throw new ClientError("HEALTH_CHECK_FAILED"); outputs.push(await responseJson(r)); }
     return { health: outputs[0], readiness: outputs[1] };
   }
+  if (args[0] === "agent-channel") return agentCommand(args, rt.signal);
   const store = new Store(rt.directory ?? join(homedir(), ".config/tob/cli"));
   if (args[0] === "instance" && args[1] === "import" && (args.length === 3 || (args.length === 4 && args[3] === "--replace"))) {
     const c = readImport(args[2]);
@@ -48,11 +51,12 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
   const isInvitation = args[0] === "invite";
   const isGuest = args[0] === "guest-channel";
   const isGuestInvite = args[0] === "channel-invite";
-  const scoped = isOrg || isChannel || isInvitation || isGuest || isGuestInvite;
+  const isAgent = args[0] === "agent";
+  const scoped = isAgent || isOrg || isChannel || isInvitation || isGuest || isGuestInvite;
   const orgCommand = scoped ? args[1] : undefined;
   const options: Record<string, string> = {};
   if (scoped) {
-    if (!(isOrg ? ["list", "create", "use", "show", "update"] : (isInvitation || isGuestInvite) ? ["inbox", "list", "send", "accept", "revoke"] : isGuest ? ["list", "show", "history", "send"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
+    if (!(isAgent ? ["list", "create", "revoke"] : isOrg ? ["list", "create", "use", "show", "update"] : (isInvitation || isGuestInvite) ? ["inbox", "list", "send", "accept", "revoke"] : isGuest ? ["list", "show", "history", "send"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
     for (let n = 2; n < args.length; n += 2) {
       if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file", "--email", "--channel"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
       options[args[n]] = args[n+1];
@@ -145,6 +149,31 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
         }
         return value;
       };
+      if (isAgent) {
+        const orgId = options["--org"] ?? i.organizationId;
+        const channelId = options["--channel"];
+        if (!orgId || !/^org_[A-Za-z0-9]+$/.test(orgId) || orgId !== i.organizationId) throw new ClientError("ORGANIZATION_TOKEN_REQUIRED");
+        if (!channelId || !/^ch_[a-f0-9]{64}$/.test(channelId)) throw new ClientError("INVALID_CHANNEL");
+        const base = "/" + orgId + "/channels/" + channelId + "/agents";
+        if (orgCommand === "list") return call(base + (options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : ""));
+        if (orgCommand === "revoke") {
+          if (!/^ag_[a-f0-9]{64}$/.test(options["--id"] ?? "")) throw new ClientError("INVALID_AGENT_INPUT");
+          return call(base + "/" + options["--id"] + "/revoke", { method: "POST" });
+        }
+        const name = options["--name"]?.trim(); const operationId = options["--operation"];
+        if (!name || name.length > 80 || /[\u0000-\u001f]/.test(name) || !/^[A-Za-z0-9_-]{16,100}$/.test(operationId ?? "")) throw new ClientError("INVALID_AGENT_INPUT");
+        const actorId = "ag_" + digest(JSON.stringify([channelId, i.userId, operationId]));
+        const localKey = JSON.stringify([binding, i.userId, channelId, operationId]);
+        let credential = store.agent(localKey);
+        if (credential && (credential.name !== name || credential.actorId !== actorId || credential.ownerUserId !== i.userId || credential.channelId !== channelId || credential.organizationId !== orgId || connectionKey(credential.config) !== connectionKey(c))) throw new ClientError("OPERATION_CONFLICT");
+        if (!credential) {
+          credential = { version: 1, config: c, organizationId: orgId, channelId, ownerUserId: i.userId, actorId, name, operationId: operationId!, secret: randomBytes(32).toString("hex") };
+          store.putAgent(localKey, credential);
+        }
+        const value = await call(base, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": operationId! }, body: JSON.stringify({ name, secretHash: digest(credential.secret) }) });
+        if (value.actorId !== actorId || value.ownerUserId !== i.userId || value.name !== name || !["active", "revoked", "expired"].includes(String(value.state))) throw new ClientError("INVALID_AGENT_RESPONSE");
+        return { actorId, name, ownerUserId: i.userId, state: value.state, credentialFile: store.agentFile(localKey) };
+      }
       if (isGuestInvite) {
         const id = options["--id"];
         if (orgCommand === "inbox") return call(options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : "", {}, "/api/channel-invitations");

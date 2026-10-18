@@ -333,3 +333,7 @@ The organization invitation sub-slice now has [native UAT evidence](organization
 ### Direct channel guest implementation candidate
 
 See [channel guests](channel-guests.md) for the bounded next slice. Channel DO owns guest invitations and user-ID-bound grants with an exact message-sequence join floor; D1 holds a recipient lookup projection only. Accepting does not create WorkOS organization membership. Current organization owners issue/revoke; accepted guests can read/send only through their active channel grant. Organization members retain the existing all-channels model. Mobile and real UAT acceptance remain pending; this is not a completed invitation or Agent slice.
+
+### Channel Agent interaction sub-slice
+
+The autonomous UAT goal now proceeds through [channel-scoped Agent credentials and reply](channel-agents.md), after [direct channel guest native verification](channel-guests.md#native-uat-verification--2026-10-18-jst). One initial credential hash per Channel Agent, fixed read/send scopes and a join sequence floor are the implemented narrow model; separate rotating credentials, organization-wide Agents and management roles remain target extensions. This increment does not claim work execution, WebSocket, two-Host completion or T3 closure.

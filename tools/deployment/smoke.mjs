@@ -24,7 +24,7 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
     assert.equal((await get('/api/auth/logout', 'POST')).status, 401);
     const ready = await get('/readyz');
     assert.equal(ready.status, 200);
-    assert.deepEqual(ready.body, { ready: true, releaseSha: target.releaseSha, d1SchemaVersion: 5, orgSchemaVersion: 4, channelSchemaVersion: 2, businessEnabled: true });
+    assert.deepEqual(ready.body, { ready: true, releaseSha: target.releaseSha, d1SchemaVersion: 5, orgSchemaVersion: 4, channelSchemaVersion: 3, businessEnabled: true });
     const refusal = await get('/api/organizations', 'POST');
     assert.equal(refusal.status, 401);
     assert.equal(refusal.body.error.code, 'UNAUTHENTICATED');
