@@ -73,3 +73,7 @@ The first phone run exposed stale unsaved text/list role after reselection; fixe
 Local checks: 20 workerd + 19 Node/CLI/contracts + 2 wizard tests, typecheck/build passed. A repeated workerd run under concurrent native compilation hit the default 5-second timeout; the same assertions passed with a 20-second timeout. This is recorded as a timing failure/retry, not a new production guarantee.
 
 Automatic approval review rejected optional second-org creation and real membership deactivation as beyond this requested slice; neither executed. Switching here means unscoped session → the same phone-created organization, not a demonstrated two-organization switch. Inactive-role, provider-outage and response-loss recovery remain local-test evidence only. Signed identity events/reconciliation, live revocation propagation/configuration interruption recovery, remaining physical/platform acceptance and Human review still block full T1 closure.
+
+## Subsequent authorized collaboration slices
+
+The earlier single-admin/single-organization evidence above remains historical. The Human subsequently authorized ordinary-user default/multiple workspaces and multi-user invitations: [current scope and evidence](multi-user-collaboration.md). The [organization invitation continuation](organization-invitations.md#native-uat-continuation--2026-10-18-jst) verifies native A→B membership and current owner/member permission boundaries. It does not close the remaining T1 identity-event, same-membership reactivation, deployment-recovery or platform/Human acceptance gates.
