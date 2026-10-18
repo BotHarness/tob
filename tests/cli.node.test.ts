@@ -236,6 +236,9 @@ test('channel guests use independent public routes without selecting or joining 
  await run('channel-invite','revoke','--channel',channel,'--id',invitation);
  assert.deepEqual(seen[6],{path:'/api/organizations/org_owner/channels/'+channel+'/guest-invitations',method:'POST',body:{email:'b@example.test'},key:'guest-invite-0001'});
  assert.equal(seen[8].path,'/api/organizations/org_owner/channels/'+channel+'/guest-invitations/'+invitation+'/revoke');
+ await run('guest-channel','list','--org','org_invites','--after',invitation);
+ assert.equal(seen[9].path,'/api/guest-channels?after='+invitation+'&organizationId=org_invites');
+ await fails(run('guest-channel','list','--org','invalid'),'INVALID_ORGANIZATION');
  await fails(run('channel-invite','accept','--id','invitation_wrong'),'INVALID_CHANNEL_INVITATION');
  await fails(run('guest-channel','show','--id','ch_wrong'),'INVALID_CHANNEL');
  globalThis.fetch=async(url,init)=>String(url).includes('/api/guest-channels')?Response.json({error:{code:'CHANNEL_ACCESS_DENIED'}},{status:403}):previous(url,init);

@@ -1,0 +1,11 @@
+{
+  "at": "2026-10-18T06:22:15.204Z",
+  "releaseSha": "bf6d896e813457382cd2bb2e7c74b22c03ba01ca",
+  "authorizedOrganizationName": true,
+  "organizationFilter": true,
+  "unrelatedOrganizationEmpty": true,
+  "noOrganizationMembership": true,
+  "siblingDenied": true,
+  "revokedChannelRemoved": true,
+  "ownTestGrantRevoked": true
+}

@@ -10,6 +10,23 @@ This supersedes the admin-only application admission restriction in T1. The prot
 
 The Human confirmed that "group channel invitation" means inviting a recipient only to the selected channel. Acceptance must not create organization membership or reveal sibling channels. This is the existing direct-channel guest scope, not federation or a group-to-group bridge.
 
+## Current acceptance map — 2026-10-18
+
+This table separates recorded slice evidence from remaining work; it is not a fresh rerun of every historical UAT check. The overall goal remains open.
+
+| Required behavior | Recorded evidence | Remaining boundary |
+| --- | --- | --- |
+| Ordinary user gets a default workspace; multiple workspaces | Ordinary-user continuation below; mobile #2131 and independent CLI | Full T1 identity-event and interrupted-deployment recovery gates remain separate |
+| Owner creates multiple channels; organization members see them | Channel HTTP slice below; mobile #2138 | Automatic WebSocket delivery is not implemented by the HTTP proof |
+| A invites B to the organization | [Organization invitations](organization-invitations.md), mobile #2146 | Existing synthetic users do not prove provider email delivery or every new-account path |
+| A invites a guest only to one channel | [Channel guests](channel-guests.md), mobile #2150 and #2169 | No org membership/sibling access; this is the confirmed meaning of “group channel invitation” |
+| Invite Agents into a channel and interact | [Channel Agents](channel-agents.md), mobile #2152 | Organization-wide Agent admission is still unimplemented; channel credentials do not satisfy it |
+| Phone → A → B → same-channel result through two isolated Hosts | [Native phone/Host qualification](work-forwarding.md#phone--two-native-hosts-follow-up--2026-10-18), mobile #2157 | Bounded health check only; hardware diversity, arbitrary commands and WebSocket remain unproven |
+| Natural invitation entry and shared workspace navigation | Invitation #2169; guest projection UAT [evidence](evidence/2026-10-18-workspace-directory-uat.json); mobile #2170 source tests | New drawer native switch/revoke/account isolation/text-size/theme evidence pending; disk capacity currently prevents assignment |
+| Share and join with URL/QR | Recipient-bound URL preview/accept is recorded in [CLI contract](t1-cli-session.md) | Sender native copy/share, QR rendering/save, new-instance Hosted AuthKit continuation and camera/Android gates remain open |
+
+The next assigned device run must use the final #2170 source SHA, not an earlier green candidate. Display-scope hardening is distinct from authorization: saved account identity partitions local view state while verified live identity and current server checks continue to authorize requests. Normal refresh must retain a draft; account replacement must not reveal the previous user's cached view.
+
 ## First slice contract
 
 `POST /api/onboarding` runs after authenticated sign-in and on explicit session checks. A fixed server-derived user operation provisions "My workspace" once; it cannot be selected by caller-provided user IDs. `GET /api/me` remains read-only. Existing instance deployments retain admin-only admission until a protected operator policy change enables authenticated users and additional org creation. WorkOS registration configuration remains a separate control; invitation-only registration can coexist with normal non-admin users.
