@@ -15,6 +15,13 @@
       "when": 1792282207676,
       "tag": "0001_aromatic_karma",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792285033378,
+      "tag": "0002_grey_strong_guy",
+      "breakpoints": true
     }
   ]
 }

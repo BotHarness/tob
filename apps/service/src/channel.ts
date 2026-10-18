@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { and, eq, gt, gte, asc, desc } from "drizzle-orm";
 import migrations from "../db/channel/migrations/migrations";
-import { channelConfig, channelMessage, channelInvitation, channelGuest } from "../db/channel/schema";
+import { channelConfig, channelMessage, channelInvitation, channelGuest, channelAgent } from "../db/channel/schema";
 
 export type ChannelIdentity = { channelId: string; organizationId: string; name: string; creatorId: string; creatorType: "human" | "agent"; createdAt: string };
 export type ChannelActor = { id: string; type: "human" | "agent"; organizationId: string; historyFrom: string; historyAfter?: number };
@@ -14,7 +14,7 @@ export class Channel extends DurableObject<Env> {
     this.db = drizzle(ctx.storage);
     ctx.blockConcurrencyWhile(async () => { await migrate(this.db, migrations); });
   }
-  schemaStatus() { this.db.select().from(channelConfig).limit(1).all(); return { schemaVersion: 2 }; }
+  schemaStatus() { this.db.select().from(channelConfig).limit(1).all(); return { schemaVersion: 3 }; }
   initialize(value: ChannelIdentity) {
     const old = this.db.select().from(channelConfig).get();
     if (old && Object.keys(value).some(k => old[k as keyof ChannelIdentity] !== value[k as keyof ChannelIdentity])) throw new Error("CHANNEL_STATE_CONFLICT");
@@ -104,6 +104,49 @@ export class Channel extends DurableObject<Env> {
   guestHistory(channelId: string, userId: string, after: number) {
     const value = this.guestActor(channelId, userId);
     return value ? { allowed: true as const, result: this.history(channelId, value.actor, after) } : { allowed: false as const };
+  }
+
+  private agentView(row: typeof channelAgent.$inferSelect) {
+    return { actorId: row.actorId, kind: "agent" as const, name: row.name, ownerUserId: row.ownerUserId, scopes: ["messages:read", "messages:send"], state: !row.active ? "revoked" : Date.parse(row.expiresAt) <= Date.now() ? "expired" : "active", historyAfter: row.historyAfter, expiresAt: row.expiresAt };
+  }
+  issueAgent(channelId: string, actor: ChannelActor, ownerMembershipId: string, actorId: string, name: string, secretHash: string) {
+    this.authorize(channelId, actor);
+    const old = this.db.select().from(channelAgent).where(eq(channelAgent.actorId, actorId)).get();
+    if (old) return old.ownerUserId === actor.id && old.ownerMembershipId === ownerMembershipId && old.name === name && old.secretHash === secretHash ? this.agentView(old) : null;
+    const historyAfter = this.db.select({ sequence: channelMessage.sequence }).from(channelMessage).orderBy(desc(channelMessage.sequence)).limit(1).get()?.sequence ?? 0;
+    const row = this.db.insert(channelAgent).values({ actorId, ownerUserId: actor.id, ownerMembershipId, name, secretHash, active: true, historyAfter, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 30 * 86400000).toISOString() }).returning().get();
+    return this.agentView(row);
+  }
+  agents(channelId: string, actor: ChannelActor, after: string) {
+    this.authorize(channelId, actor);
+    const rows = this.db.select().from(channelAgent).where(gt(channelAgent.actorId, after)).orderBy(asc(channelAgent.actorId)).limit(51).all();
+    return { agents: rows.slice(0, 50).map(row => this.agentView(row)), nextCursor: rows.length > 50 ? rows[49].actorId : null };
+  }
+  revokeAgent(channelId: string, actor: ChannelActor, actorId: string) {
+    this.authorize(channelId, actor);
+    const row = this.db.update(channelAgent).set({ active: false }).where(eq(channelAgent.actorId, actorId)).returning().get();
+    return row ? this.agentView(row) : null;
+  }
+  private agentActor(channelId: string, actorId: string, secretHash: string) {
+    const config = this.db.select().from(channelConfig).get();
+    const grant = this.db.select().from(channelAgent).where(eq(channelAgent.actorId, actorId)).get();
+    if (!config || config.channelId !== channelId || !grant?.active || Date.parse(grant.expiresAt) <= Date.now() || grant.secretHash.length !== secretHash.length) return null;
+    let different = 0;
+    for (let n = 0; n < secretHash.length; n++) different |= secretHash.charCodeAt(n) ^ grant.secretHash.charCodeAt(n);
+    if (different) return null;
+    return { config, grant, actor: { id: actorId, type: "agent" as const, organizationId: config.organizationId, historyFrom: new Date(0).toISOString(), historyAfter: grant.historyAfter } };
+  }
+  agentContext(channelId: string, actorId: string, secretHash: string) {
+    const value = this.agentActor(channelId, actorId, secretHash);
+    return value ? { organizationId: value.config.organizationId, ownerUserId: value.grant.ownerUserId, ownerMembershipId: value.grant.ownerMembershipId, agent: this.agentView(value.grant) } : null;
+  }
+  agentHistory(channelId: string, actorId: string, secretHash: string, after: number) {
+    const value = this.agentActor(channelId, actorId, secretHash);
+    return value ? { allowed: true as const, result: this.history(channelId, value.actor, after) } : { allowed: false as const };
+  }
+  agentSend(channelId: string, actorId: string, secretHash: string, operationId: string, text: string) {
+    const value = this.agentActor(channelId, actorId, secretHash);
+    return value ? { allowed: true as const, result: this.send(channelId, value.actor, operationId, text) } : { allowed: false as const };
   }
 
 }

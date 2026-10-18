@@ -161,3 +161,5 @@ Keep the same operation key and body after an uncertain response. Channel creati
 Organization member invitations (UAT slice): [API, CLI, recovery and verification status](docs/organization-invitations.md). Use `invite send/list/revoke` from the selected owner's workspace, and `invite inbox/accept` from the recipient's own authenticated account. After acceptance, select the organization with `org use`.
 
 Direct channel guests (next UAT candidate): [isolated guest grants, CLI and acceptance](docs/channel-guests.md). `channel-invite` manages invitations; `guest-channel` opens only accepted channels without joining their organization. This initial path uses the existing user's in-app inbox, with no email delivery claim.
+
+Agent interaction contract and CLI: [Channel Agents](docs/channel-agents.md).

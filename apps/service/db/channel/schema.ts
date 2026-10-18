@@ -32,3 +32,15 @@ export const channelGuest = sqliteTable("channel_guest", {
   active: integer("active", { mode: "boolean" }).notNull(),
   historyAfter: integer("history_after").notNull(),
 });
+
+export const channelAgent = sqliteTable("channel_agent", {
+  actorId: text("actor_id").primaryKey(),
+  ownerUserId: text("owner_user_id").notNull(),
+  ownerMembershipId: text("owner_membership_id").notNull(),
+  name: text("name").notNull(),
+  secretHash: text("secret_hash").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull(),
+  historyAfter: integer("history_after").notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});

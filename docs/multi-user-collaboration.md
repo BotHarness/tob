@@ -52,3 +52,7 @@ This completes the narrow HTTP channel sub-slice, not T1/T2 or the overall goal.
 ## Next: direct channel guest candidate
 
 [Channel guest contract and acceptance](channel-guests.md) now defines existing-user inbox acceptance without organization membership. Source tests cover per-channel isolation, sequence-based history, revoke/rejoin and DO→D1 recovery. Mobile, real UAT and cross-Host Agent proof remain separate gates; do not infer them from this service preparation.
+
+## Channel guests qualified; next Agent interaction
+
+[Channel guest native continuation](channel-guests.md#native-uat-verification--2026-10-18-jst) passed phone invite/accept/send, independent CLI boundaries, refresh/restart, revoked old-session refusal and owner revoke. [Agent interaction](channel-agents.md) is now the active sub-slice: independent channel-scoped identity and harmless reply, with credentials separate from local work authorization. Agent organization-wide membership, WebSocket, fixed work, two-Host communication and group-channel clarification remain outstanding.

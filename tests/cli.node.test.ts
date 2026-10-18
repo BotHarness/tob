@@ -1,6 +1,6 @@
 import { test, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, statSync, readdirSync, chmodSync, symlinkSync, realpathSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, statSync, readdirSync, chmodSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
@@ -241,4 +241,39 @@ test('channel guests use independent public routes without selecting or joining 
  globalThis.fetch=async(url,init)=>String(url).includes('/api/guest-channels')?Response.json({error:{code:'CHANNEL_ACCESS_DENIED'}},{status:403}):previous(url,init);
  await fails(run('guest-channel','history','--id',channel),'CHANNEL_ACCESS_DENIED');
  assert.equal(orgSelected,'org_owner');
+});
+
+
+test('Agent create persists a private stable credential before network and retries without disclosing it', async()=>{
+ await setup(); orgSelected='org_fixture'; await command('refresh');
+ const original=globalThis.fetch; let lost=true; let hashes:string[]=[];
+ const channelId='ch_'+'a'.repeat(64);
+ globalThis.fetch=async(url,init)=>{
+  if(!String(url).endsWith('/agents'))return original(url,init);
+  const files=readdirSync(join(rt.directory!,'agents')); assert.equal(files.length,1);
+  const credential=JSON.parse(readFileSync(join(rt.directory!,'agents',files[0]),'utf8'));
+  assert.equal(statSync(join(rt.directory!,'agents',files[0])).mode&0o777,0o600);
+  const body=JSON.parse(String(init?.body));hashes.push(body.secretHash);assert.notEqual(body.secretHash,credential.secret);
+  if(lost){lost=false;throw Error('response lost');}
+  return Response.json({actorId:credential.actorId,name:credential.name,ownerUserId:'user_fixture',state:'active',secret:credential.secret});
+ };
+ const run=(name='Test agent')=>execute(['agent','create','--server',config.server,'--channel',channelId,'--name',name,'--operation','agent-create-stable-0001'],rt);
+ await fails(run(),'NETWORK_UNAVAILABLE');
+ const result=await run() as {credentialFile:string};
+ const credential=JSON.parse(readFileSync(result.credentialFile,'utf8'));
+ assert.equal(new Set(hashes).size,1);assert.equal(JSON.stringify(result).includes(credential.secret),false);
+ await fails(run('Changed agent'),'OPERATION_CONFLICT');assert.equal(hashes.length,2);
+ const before=state();
+ globalThis.fetch=async(url,init)=>{
+  if(String(url).includes('/api/agent-channels/')){assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer tob_agent_'+credential.actorId+'.'+credential.secret);return Response.json({messages:[],nextCursor:4,hasMore:false});}
+  return original(url,init);
+ };
+ assert.deepEqual(await execute(['agent-channel','history','--credential-file',result.credentialFile],rt),{messages:[],nextCursor:4,hasMore:false});
+ assert.deepEqual(state(),before);
+ discovery.auth.clientId='client_changed';discovery.auth.issuer='https://api.workos.com/user_management/client_changed';discovery.auth.jwksUri='https://api.workos.com/sso/jwks/client_changed';
+ await fails(execute(['agent-channel','history','--credential-file',result.credentialFile],rt),'INSTANCE_CONFIG_CHANGED');
+ chmodSync(result.credentialFile,0o644);
+ await fails(execute(['agent-channel','history','--credential-file',result.credentialFile],rt),'PRIVATE_CREDENTIAL_FILE_REQUIRED');
+ chmodSync(result.credentialFile,0o600);const link=join(root,'agent-link.json');symlinkSync(result.credentialFile,link);
+ await fails(execute(['agent-channel','history','--credential-file',link],rt),'SYMLINK_REFUSED');
 });
