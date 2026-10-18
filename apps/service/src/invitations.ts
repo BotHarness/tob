@@ -17,7 +17,7 @@ function invitation(value: unknown): Invitation {
 function view(v: Invitation) {
   return { invitationId: v.id, organizationId: v.organization_id, email: v.email, role: "member", state: v.state === "pending" && Date.parse(v.expires_at) <= Date.now() ? "expired" : v.state, expiresAt: v.expires_at };
 }
-async function localOrg(env: Env, orgId: string) {
+export async function localOrg(env: Env, orgId: string) {
   if (!/^org_[A-Za-z0-9]+$/.test(orgId)) return false;
   return !!await drizzle(env.INSTANCE_DB).select().from(organizationLink).where(and(eq(organizationLink.orgId, orgId), eq(organizationLink.lifecycle, "active"))).get();
 }
@@ -41,7 +41,7 @@ async function owner(env: Env, authorization: string | undefined, orgId: string)
   if (member.role.slug !== "owner") throw new AccessError("ORGANIZATION_OWNER_REQUIRED", 403);
   return member;
 }
-async function recipient(env: Env, authorization: string | undefined) {
+export async function recipient(env: Env, authorization: string | undefined) {
   const identity = await admit(authorization, env);
   const user = await workos<{ id: string; email: string; email_verified: boolean }>(env, "/user_management/users/" + identity.userId);
   if (user?.id !== identity.userId || user.email_verified !== true || typeof user.email !== "string") throw new AccessError("INVITATION_ACCESS_DENIED", 403);

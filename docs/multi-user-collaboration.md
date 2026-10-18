@@ -48,3 +48,7 @@ This completes the narrow HTTP channel sub-slice, not T1/T2 or the overall goal.
 ## Organization invitation continuation — UAT verification, 2026-10-18 JST
 
 [Invitation slice](organization-invitations.md#native-uat-continuation--2026-10-18-jst) now has service/CLI and actual mobile evidence. A invites B, B accepts and reads organization-wide channels as member; pre-join history is hidden, post-join text is read by owner, and owner-only operations remain refused. Native revoke and session isolation passed. See [service #20](https://github.com/BotHarness/tob/pull/20) and [mobile #2146](https://github.com/BotHarness/DeepSeekBot/pull/2146). The next bounded behavior is a direct channel guest who can use that channel without seeing the rest of its organization. Agent identity and two-Host cloud communication follow; group-channel bridge meaning is still unanswered. Keep T1/T2 and the overall goal open.
+
+## Next: direct channel guest candidate
+
+[Channel guest contract and acceptance](channel-guests.md) now defines existing-user inbox acceptance without organization membership. Source tests cover per-channel isolation, sequence-based history, revoke/rejoin and DO→D1 recovery. Mobile, real UAT and cross-Host Agent proof remain separate gates; do not infer them from this service preparation.

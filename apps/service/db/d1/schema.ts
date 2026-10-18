@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, check } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, check, index } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 export const instanceConfig = sqliteTable("instance_config", {
@@ -31,3 +31,10 @@ export const organizationLink = sqliteTable("organization_link", {
   lifecycle: text("lifecycle", { enum: ["creating", "active", "disabled"] }).notNull(),
   createdAt: text("created_at").notNull(),
 }, t => [check("organization_lifecycle", sql`${t.lifecycle} IN ('creating', 'active', 'disabled')`)]);
+
+export const channelInvitationDirectory = sqliteTable("channel_invitation_directory", {
+  invitationId: text("invitation_id").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  recipientEmail: text("recipient_email").notNull(),
+  acceptedUserId: text("accepted_user_id"),
+}, t => [index("channel_invitation_recipient").on(t.recipientEmail, t.invitationId), index("channel_invitation_user").on(t.acceptedUserId, t.invitationId)]);
