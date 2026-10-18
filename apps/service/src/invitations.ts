@@ -110,6 +110,13 @@ export const organizationInvitations = new Hono<{ Bindings: Env }>()
   });
 export const invitations = new Hono<{ Bindings: Env }>()
   .use("*", limit)
+  .get("/:id", async c => {
+    const user = await recipient(c.env, c.req.header("Authorization"));
+    const value = await get(c.env, c.req.param("id"));
+    if (value.email.toLowerCase() !== user.email || (value.accepted_user_id && value.accepted_user_id !== user.userId)) throw new AccessError("INVITATION_ACCESS_DENIED", 403);
+    const org = await c.env.ORGS.getByName(value.organization_id).read(value.organization_id);
+    return c.json({ ...view(value), organizationName: org.name });
+  })
   .get("/", async c => {
     const user = await recipient(c.env, c.req.header("Authorization"));
     const result = await page(c.env, new URLSearchParams({ email: user.email, limit: "50", ...cursor(c.req.query("after")) }));

@@ -1,0 +1,19 @@
+{
+  "releaseSha": "f10437bfbe46c4cbcbfb71bc6b599e9551669051",
+  "at": "2026-10-18T05:34:42.693Z",
+  "previewRecipient": true,
+  "previewDoesNotJoin": true,
+  "wrongAccountDenied": true,
+  "anonymousDenied": true,
+  "landingNoDestinationMetadata": true,
+  "crossServerAcceptDenied": true,
+  "revokedAcceptDenied": true,
+  "guestHasNoOrgMembership": true,
+  "siblingDenied": true,
+  "nativeInvitationPending": true,
+  "schema": {
+    "d1": 5,
+    "org": 4,
+    "channel": 5
+  }
+}

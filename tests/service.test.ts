@@ -933,3 +933,29 @@ it('Agent identity discovery reports canonical channel and actor without exposin
  await f.call(f.base+'/agents/'+a.actorId+'/revoke','user_a','POST');
  expect((await call()).status).toBe(403);
 });
+
+it('invitation preview discloses the destination only to its verified recipient and never joins', async () => {
+  const f = await guestFixture();
+  const v = await (await f.issue()).json() as { invitationId: string };
+  const path = '/channel-invitations/' + v.invitationId;
+  expect((await request('/api' + path)).status).toBe(401);
+  expect((await f.guest(path, 'user_c')).status).toBe(403);
+  expect(await (await f.guest(path)).json()).toMatchObject({ invitationId: v.invitationId, channelId: f.channel.channelId, organizationName: expect.any(String), state: 'pending', role: 'guest' });
+  expect((await f.guest('/guest-channels/' + f.channel.channelId)).status).toBe(403);
+  expect(f.members.map(m => m.user_id)).toEqual(['user_a']);
+  await f.call(f.base + '/guest-invitations/' + v.invitationId + '/revoke', 'user_a', 'POST');
+  expect(await (await f.guest(path)).json()).toMatchObject({ state: 'revoked' });
+  expect((await f.accept(v.invitationId)).status).toBe(409);
+  expect((await f.guest('/guest-channels/' + f.sibling.channelId)).status).toBe(403);
+});
+it('invitation landing is metadata-free, escaped, and rejects malformed locators', async () => {
+  const response = await request('/join?invitation=ci_' + 'a'.repeat(64));
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+  expect(response.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+  const page = await response.text();
+  expect(page).toContain('ai.botharness.deepseekbot.dev:/cloud-join?link=');
+  expect(page).not.toContain('organizationId');
+  for (const query of ['invitation=<script>', 'invitation=invitation_test&invitation=invitation_other', 'invitation=invitation_test&redirect=https://other.example'])
+    expect((await request('/join?' + query)).status).toBe(400);
+});

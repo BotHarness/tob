@@ -4,6 +4,8 @@
 
 Canonical delivery specification: https://github.com/BotHarness/tob/issues/1
 
+> **Current checkpoint, 2026-10-18:** the earlier initialization-only paragraphs below are historical scope. Mobile/CLI login, default and multiple workspaces, channels, recipient-bound workspace/channel invitations, channel Agents and bounded two-Host health-check forwarding now have implementation and UAT records in their linked slice documents. The umbrella remains open for outstanding gates. Next Draft [#25](https://github.com/BotHarness/tob/pull/25) adds invitation locators and recipient-only previews for DeepSeekBot [#2169](https://github.com/BotHarness/DeepSeekBot/pull/2169); its API/CLI and assigned iOS guest invitation acceptance now have [native evidence](https://github.com/BotHarness/DeepSeekBot/blob/8b9c8dba55f13e323274fc728a3116a2df2ad9bb/.github/pr-screenshots/2161-invitation-journey/README.md); sender sharing, new-instance trust/Hosted AuthKit continuation, camera and Android remain pending. A link carries a destination, not permission, and channel guests still get no organization membership. No public reusable invitations, federation or Prod changes are introduced. See [CLI contract](t1-cli-session.md#recipient-bound-invitation-links-next-tracer-validation-in-progress).
+
 状态：T1 的部署与 WorkOS 登录/首个管理员初始化增量已在真实 UAT 验证。健康/版本、D1 与 Org DO 迁移、JWT 校验、受保护的原子初始化和 `/api/me` 已实现；组织/群命令仍关闭。可信配置文件导入及正式 CLI 登录、刷新、退出也已通过真实 UAT 验证；手机及组织路径仍待完成，T1 保持开放，T2–T5 与 Prod 未启动。
 
 2026-10-18 UAT 证据：有效身份初始化前拒绝 → 已接受邀请的实际用户原子绑定 → 同一身份 `/api/me` 成功；同目标重试不改写授权。准确部署 SHA、测试范围、首次失败与剩余门槛见 [登录与初始化切片](t1-auth-bootstrap.md#evidence-and-remaining-boundaries)。本条记录属于较早的初始化增量；CLI 后续结果见下文，Prod 不变。

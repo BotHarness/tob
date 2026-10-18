@@ -296,3 +296,15 @@ test('work request CLI carries only fixed target/expiry and stable operation thr
  };
  assert.deepEqual(await run(),{replayed:false});assert.deepEqual(await run(),{replayed:true});
 });
+
+test('invitation links preserve target and CLI refuses a different server before sending credentials', async()=>{
+ await setup();
+ const id='ci_'+'a'.repeat(64), url=config.server+'/join?invitation='+id;
+ assert.deepEqual(await execute(['invitation-link',config.server,id],rt),{url,recipientBound:true});
+ const delegate=globalThis.fetch;
+ globalThis.fetch=async(input,init)=>String(input)===config.server+'/api/channel-invitations/'+id ? Response.json({invitationId:id,state:'pending'}) : delegate(input,init);
+ assert.deepEqual(await execute(['channel-invite','preview','--server',config.server,'--link',url],rt),{invitationId:id,state:'pending'});
+ const count=requests.length;
+ await fails(execute(['channel-invite','accept','--server',config.server,'--link',url.replace(config.server,'https://other.example')],rt),'INVITATION_TARGET_MISMATCH');
+ assert.equal(requests.length,count);
+});

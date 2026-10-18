@@ -87,3 +87,34 @@ The successful final replay used the same Human-approved session, restored from 
 Checks for this source: typecheck/build, 13 workerd tests, 16 Node tests, plus 2 wizard tests in CI. Live configuration-drift, crash/power-loss, cross-device and native-mobile scenarios were not run; their source tests/design must not be described as cloud or Human QA evidence. WorkOS access JWTs may remain valid until expiry after revocation; immediate access-token invalidation remains a later T1 gate.
 
 Remaining T1 work: mobile QR/import and native PKCE/secure storage, independent phone/CLI organization access, owner/member setup and organization creation/retry, signed identity-event reconciliation and measured revocation behavior, and native Human QA. T1 stays open; T2–T5 and Production are untouched.
+
+## Recipient-bound invitation links (next tracer, validation in progress)
+
+An invitation locator has the form `https://<instance>/join?invitation=<invitation-id>`. It contains no WorkOS token or Agent credential and does not grant access. The public landing only displays the service and opens the native client. Destination metadata requires a verified invited account through `GET /api/invitations/:id` or `GET /api/channel-invitations/:id`; neither GET accepts the invitation. Existing POST acceptance and revocation remain authoritative.
+
+```sh
+node apps/cli/tob.mjs invitation-link https://groups.example ci_<id>
+node apps/cli/tob.mjs channel-invite preview --server https://groups.example --link 'https://groups.example/join?invitation=ci_<id>'
+node apps/cli/tob.mjs channel-invite accept --server https://groups.example --link 'https://groups.example/join?invitation=ci_<id>'
+```
+
+Use `invite` instead of `channel-invite` for workspace invitations. The explicit server must match the link and an independently imported configuration; link parsing never imports trust or logs into another server. A wrong account gets no destination metadata. A revoked or expired invitation cannot be accepted. Mobile adds a device-local pending target through login/restart, then explicitly accepts and opens the selected guest channel without obtaining workspace membership.
+
+Local validation: 62 workerd tests and 20 CLI tests passed, including recipient preview/no-join, wrong-account denial, revoked acceptance denial, neutral landing and cross-server credential refusal. This records source/local runtime evidence only. This initial source checkpoint is superseded by the UAT and native results below; no Prod change or merge is implied. QR display/save and the unified cloud workspace drawer are follow-up work.
+
+### UAT API/CLI replay — 2026-10-18
+
+Service `f10437bfbe46c4cbcbfb71bc6b599e9551669051` passed [CI](https://github.com/BotHarness/tob/actions/runs/39100874671), was deployed through the existing guarded UAT-only helper, and read back the same version with D1/Org/Channel schemas 5/4/5. [Sanitized replay evidence](evidence/invitation-journey-uat.json) records actual synthetic A/B accounts: recipient preview without joining, wrong-account/anonymous refusal, neutral landing without destination data, explicit server mismatch refusal, revoked acceptance denial, no workspace membership and sibling-channel refusal. The pending native invitation was subsequently exercised in the assigned Simulator run below.
+
+- [x] Public locator and recipient preview through real UAT CLI/API.
+- [x] Wrong-account, no-join, revoked and cross-server boundaries.
+- [x] Assigned iOS Simulator before/after evidence: deep-link preview, pending/cold restart, explicit accept and exact guest-channel navigation.
+- [x] Native message once, cold reopen, revoked-grant denial/list removal, refresh and isolated session cleanup.
+- [ ] Sender native copy/share and new-instance trust/Hosted AuthKit continuation carrying an invitation.
+- [ ] QR rendering/save and real camera acceptance, followed by separate platform coverage.
+
+### Native invitation replay — 2026-10-18
+
+[Batch21 evidence](https://github.com/BotHarness/DeepSeekBot/blob/8b9c8dba55f13e323274fc728a3116a2df2ad9bb/.github/pr-screenshots/2161-invitation-journey/README.md) binds the real iOS Simulator run to mobile runtime `1a2c1c385fd842958a078da05bb85c841d69934e`, baseline `9a2b651844d8686a0381cbd2d991da6d5199e924` and this service's `f10437b` UAT deployment. The recipient previews without joining, retains the pending target through cold restart, explicitly accepts, enters only the invited guest channel and sends exactly one message. CLI independently confirms the message, no organization membership and sibling denial. Cold reopen returns to that channel; revoke denies the old session and removes the guest destination. Phone refresh/logout revokes only the synthetic test session and rejects its latest refresh token, preserving others.
+
+Two first failures were fixed in the mobile client: a misleading saved-session label and absent in-memory identity after restart hiding an already loaded guest channel. The latter has a failing-before/passing-after regression; 32 client tests/typecheck and final runtime CI pass. The recording and original failures remain in the evidence. Synthetic login does not prove Hosted AuthKit interaction. New-instance trust/browser continuation, sender sharing, camera and Android remain separate gates. Original display settings and the shared device window were restored/released; no Prod change or new PR merge.
