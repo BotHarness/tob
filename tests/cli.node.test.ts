@@ -208,3 +208,37 @@ test('invitation inbox/accept work before org selection; owner send/list/revoke 
  await fails(run('list','--org','org_other'),'ORGANIZATION_TOKEN_REQUIRED');
  await fails(run('accept','--id','not-an-id'),'INVALID_INVITATION');
 });
+
+test('channel guests use independent public routes without selecting or joining the host organization', async()=>{
+ await setup(); const previous=globalThis.fetch, channel='ch_'+'b'.repeat(64), invitation='ci_'+'c'.repeat(64);
+ const seen:{path:string;method:string;body:unknown;key:string|null}[]=[];
+ globalThis.fetch=async(url,init)=>{
+  const u=new URL(String(url));
+  if(u.pathname.startsWith('/api/channel-invitations') || u.pathname.startsWith('/api/guest-channels') || u.pathname.includes('/guest-invitations')){
+   seen.push({path:u.pathname+u.search,method:init?.method??'GET',body:init?.body?JSON.parse(String(init.body)):null,key:new Headers(init?.headers).get('Idempotency-Key')});
+   return Response.json({accepted:true});
+  }
+  return previous(url,init);
+ };
+ const run=(...args:string[])=>execute([...args,'--server',config.server],rt);
+ await run('channel-invite','inbox'); await run('channel-invite','accept','--id',invitation);
+ await run('guest-channel','list'); await run('guest-channel','show','--id',channel);
+ await run('guest-channel','history','--id',channel,'--after','7');
+ const file=join(root,'guest-message.txt');writeFileSync(file,'Guest reply');
+ await run('guest-channel','send','--id',channel,'--text-file',file,'--operation','guest-message-0001');
+ assert.equal(orgSelected,undefined);
+ assert.deepEqual(seen.map(v=>v.path),['/api/channel-invitations','/api/channel-invitations/'+invitation+'/accept','/api/guest-channels','/api/guest-channels/'+channel,'/api/guest-channels/'+channel+'/messages?after=7','/api/guest-channels/'+channel+'/messages']);
+ assert.deepEqual(seen[5],{path:'/api/guest-channels/'+channel+'/messages',method:'POST',body:{text:'Guest reply'},key:'guest-message-0001'});
+ await fails(run('channel-invite','send','--channel',channel,'--email','b@example.test','--operation','guest-invite-0001'),'ORGANIZATION_TOKEN_REQUIRED');
+ orgSelected='org_owner';await command('refresh');
+ await run('channel-invite','send','--channel',channel,'--email','b@example.test','--operation','guest-invite-0001');
+ await run('channel-invite','list','--channel',channel);
+ await run('channel-invite','revoke','--channel',channel,'--id',invitation);
+ assert.deepEqual(seen[6],{path:'/api/organizations/org_owner/channels/'+channel+'/guest-invitations',method:'POST',body:{email:'b@example.test'},key:'guest-invite-0001'});
+ assert.equal(seen[8].path,'/api/organizations/org_owner/channels/'+channel+'/guest-invitations/'+invitation+'/revoke');
+ await fails(run('channel-invite','accept','--id','invitation_wrong'),'INVALID_CHANNEL_INVITATION');
+ await fails(run('guest-channel','show','--id','ch_wrong'),'INVALID_CHANNEL');
+ globalThis.fetch=async(url,init)=>String(url).includes('/api/guest-channels')?Response.json({error:{code:'CHANNEL_ACCESS_DENIED'}},{status:403}):previous(url,init);
+ await fails(run('guest-channel','history','--id',channel),'CHANNEL_ACCESS_DENIED');
+ assert.equal(orgSelected,'org_owner');
+});

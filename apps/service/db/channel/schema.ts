@@ -16,3 +16,19 @@ export const channelMessage = sqliteTable("channel_message", {
   text: text("text").notNull(),
   createdAt: text("created_at").notNull(),
 }, t => [uniqueIndex("message_author_operation").on(t.authorType, t.authorId, t.operationId)]);
+
+export const channelInvitation = sqliteTable("channel_invitation", {
+  invitationId: text("invitation_id").primaryKey(),
+  inviterId: text("inviter_id").notNull(),
+  recipientEmail: text("recipient_email").notNull(),
+  state: text("state", { enum: ["pending", "accepted", "revoked"] }).notNull(),
+  acceptedUserId: text("accepted_user_id"),
+  expiresAt: text("expires_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+export const channelGuest = sqliteTable("channel_guest", {
+  userId: text("user_id").primaryKey(),
+  invitationId: text("invitation_id").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull(),
+  historyAfter: integer("history_after").notNull(),
+});

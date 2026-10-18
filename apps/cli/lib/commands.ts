@@ -46,13 +46,15 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
   const isOrg = args[0] === "org";
   const isChannel = args[0] === "channel";
   const isInvitation = args[0] === "invite";
-  const scoped = isOrg || isChannel || isInvitation;
+  const isGuest = args[0] === "guest-channel";
+  const isGuestInvite = args[0] === "channel-invite";
+  const scoped = isOrg || isChannel || isInvitation || isGuest || isGuestInvite;
   const orgCommand = scoped ? args[1] : undefined;
   const options: Record<string, string> = {};
   if (scoped) {
-    if (!(isOrg ? ["list", "create", "use", "show", "update"] : isInvitation ? ["inbox", "list", "send", "accept", "revoke"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
+    if (!(isOrg ? ["list", "create", "use", "show", "update"] : (isInvitation || isGuestInvite) ? ["inbox", "list", "send", "accept", "revoke"] : isGuest ? ["list", "show", "history", "send"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
     for (let n = 2; n < args.length; n += 2) {
-      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file", "--email"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
+      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file", "--email", "--channel"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
       options[args[n]] = args[n+1];
     }
   }
@@ -143,6 +145,38 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
         }
         return value;
       };
+      if (isGuestInvite) {
+        const id = options["--id"];
+        if (orgCommand === "inbox") return call(options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : "", {}, "/api/channel-invitations");
+        if (orgCommand === "accept") {
+          if (!id || !/^ci_[a-f0-9]{64}$/.test(id)) throw new ClientError("INVALID_CHANNEL_INVITATION");
+          return call("/" + id + "/accept", { method: "POST" }, "/api/channel-invitations");
+        }
+        const orgId = options["--org"] ?? i.organizationId;
+        const channel = options["--channel"];
+        if (!orgId || !/^org_[A-Za-z0-9]+$/.test(orgId) || orgId !== i.organizationId) throw new ClientError("ORGANIZATION_TOKEN_REQUIRED");
+        if (!channel || !/^ch_[a-f0-9]{64}$/.test(channel)) throw new ClientError("INVALID_CHANNEL");
+        const base = "/" + orgId + "/channels/" + channel + "/guest-invitations";
+        if (orgCommand === "list") return call(base + (options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : ""));
+        if (orgCommand === "send") {
+          if (!options["--email"] || !options["--operation"]) throw new ClientError("USAGE");
+          return call(base, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": options["--operation"] }, body: JSON.stringify({ email: options["--email"] }) });
+        }
+        if (!id || !/^ci_[a-f0-9]{64}$/.test(id)) throw new ClientError("INVALID_CHANNEL_INVITATION");
+        return call(base + "/" + id + "/revoke", { method: "POST" });
+      }
+      if (isGuest) {
+        const prefix = "/api/guest-channels";
+        if (orgCommand === "list") return call(options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : "", {}, prefix);
+        const id = options["--id"];
+        if (!id || !/^ch_[a-f0-9]{64}$/.test(id)) throw new ClientError("INVALID_CHANNEL");
+        if (orgCommand === "show") return call("/" + id, {}, prefix);
+        if (orgCommand === "history") return call("/" + id + "/messages?after=" + encodeURIComponent(options["--after"] ?? "0"), {}, prefix);
+        if (!options["--text-file"] || !options["--operation"]) throw new ClientError("USAGE");
+        let text: string; try { text = readFileSync(options["--text-file"], "utf8"); } catch { throw new ClientError("MESSAGE_FILE_UNREADABLE"); }
+        if (!text.trim() || text.length > 4000) throw new ClientError("INVALID_CHANNEL_INPUT");
+        return call("/" + id + "/messages", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": options["--operation"] }, body: JSON.stringify({ text }) }, prefix);
+      }
       if (isInvitation) {
         const id = options["--id"];
         if (orgCommand === "inbox") return call(options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : "", {}, "/api/invitations");

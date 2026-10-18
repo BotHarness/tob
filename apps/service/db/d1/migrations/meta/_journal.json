@@ -29,6 +29,13 @@
       "when": 1792274107729,
       "tag": "0003_aspiring_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792282207964,
+      "tag": "0004_deep_dazzler",
+      "breakpoints": true
     }
   ]
 }

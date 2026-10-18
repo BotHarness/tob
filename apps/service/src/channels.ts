@@ -13,16 +13,16 @@ async function memberContext(env: Env, authorization: string | undefined, orgId:
   const historyFrom = new Date(Math.max(Date.parse(member.created_at), Date.parse(observed))).toISOString();
   return { member, actor: { id: identity.userId, type: "human" as const, organizationId: orgId, historyFrom } };
 }
-async function channelContext(env: Env, authorization: string | undefined, orgId: string, channelId: string) {
+export async function channelContext(env: Env, authorization: string | undefined, orgId: string, channelId: string) {
   const ctx = await memberContext(env, authorization, orgId);
   if (!channelIdValid(channelId) || !await env.ORGS.getByName(orgId).channel(orgId, ctx.member, channelId)) throw new AccessError("CHANNEL_ACCESS_DENIED", 403);
   return { ...ctx, channel: env.CHANNELS.getByName(channelId) };
 }
-function operation(key: string | undefined) {
+export function operation(key: string | undefined) {
   if (!key || !/^[A-Za-z0-9_-]{16,100}$/.test(key)) throw new AccessError("INVALID_OPERATION", 400);
   return key;
 }
-async function body(request: Request, field: string, max: number) {
+export async function body(request: Request, field: string, max: number) {
   let value; try { value = await request.json() as Record<string, unknown>; } catch { throw new AccessError("INVALID_CHANNEL_INPUT", 400); }
   if (!value || typeof value !== "object" || Object.keys(value).some(k => k !== field) || typeof value[field] !== "string" || !value[field].trim() || value[field].length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value[field])) throw new AccessError("INVALID_CHANNEL_INPUT", 400);
   return field === "name" ? value[field].trim() : value[field];
