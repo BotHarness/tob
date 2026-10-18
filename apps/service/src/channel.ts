@@ -3,7 +3,8 @@ import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { and, eq, gt, gte, asc, desc } from "drizzle-orm";
 import migrations from "../db/channel/migrations/migrations";
-import { channelConfig, channelMessage, channelInvitation, channelGuest, channelAgent } from "../db/channel/schema";
+import { channelConfig, channelMessage, channelInvitation, channelGuest, channelAgent, channelWork } from "../db/channel/schema";
+import type { WorkRequest, WorkResult } from "../../../packages/contracts/work";
 
 export type ChannelIdentity = { channelId: string; organizationId: string; name: string; creatorId: string; creatorType: "human" | "agent"; createdAt: string };
 export type ChannelActor = { id: string; type: "human" | "agent"; organizationId: string; historyFrom: string; historyAfter?: number };
@@ -14,7 +15,7 @@ export class Channel extends DurableObject<Env> {
     this.db = drizzle(ctx.storage);
     ctx.blockConcurrencyWhile(async () => { await migrate(this.db, migrations); });
   }
-  schemaStatus() { this.db.select().from(channelConfig).limit(1).all(); return { schemaVersion: 3 }; }
+  schemaStatus() { this.db.select().from(channelConfig).limit(1).all(); return { schemaVersion: 4 }; }
   initialize(value: ChannelIdentity) {
     const old = this.db.select().from(channelConfig).get();
     if (old && Object.keys(value).some(k => old[k as keyof ChannelIdentity] !== value[k as keyof ChannelIdentity])) throw new Error("CHANNEL_STATE_CONFLICT");
@@ -28,10 +29,13 @@ export class Channel extends DurableObject<Env> {
   }
   read(channelId: string, actor: ChannelActor) { return this.authorize(channelId, actor); }
   send(channelId: string, actor: ChannelActor, operationId: string, text: string) {
+    return this.writeMessage(channelId, actor, operationId, text, "text", null);
+  }
+  private writeMessage(channelId: string, actor: ChannelActor, operationId: string, text: string, kind: "text" | "work_request" | "work_result", payload: WorkRequest | WorkResult | null) {
     this.authorize(channelId, actor);
     const old = this.db.select().from(channelMessage).where(and(eq(channelMessage.authorId, actor.id), eq(channelMessage.authorType, actor.type), eq(channelMessage.operationId, operationId))).get();
-    if (old) return old.text === text && old.createdAt >= actor.historyFrom && old.sequence > (actor.historyAfter ?? 0) ? { message: old, replayed: true } : null;
-    const message = this.db.insert(channelMessage).values({ authorId: actor.id, authorType: actor.type, operationId, text, createdAt: new Date().toISOString() }).returning().get();
+    if (old) return old.text === text && old.kind === kind && JSON.stringify(old.payload) === JSON.stringify(payload) && old.createdAt >= actor.historyFrom && old.sequence > (actor.historyAfter ?? 0) ? { message: old, replayed: true } : null;
+    const message = this.db.insert(channelMessage).values({ authorId: actor.id, authorType: actor.type, operationId, text, kind, payload, createdAt: new Date().toISOString() }).returning().get();
     return { message, replayed: false };
   }
   history(channelId: string, actor: ChannelActor, after: number) {
@@ -147,6 +151,48 @@ export class Channel extends DurableObject<Env> {
   agentSend(channelId: string, actorId: string, secretHash: string, operationId: string, text: string) {
     const value = this.agentActor(channelId, actorId, secretHash);
     return value ? { allowed: true as const, result: this.send(channelId, value.actor, operationId, text) } : { allowed: false as const };
+  }
+
+  requestWork(channelId: string, actor: ChannelActor, membershipId: string, operationId: string, requestId: string, targetActorId: string, expiresAt: string) {
+    this.authorize(channelId, actor);
+    if (actor.type !== "human") return { error: "WORK_ACCESS_DENIED" as const };
+    const existing = this.db.select().from(channelWork).where(eq(channelWork.requestId, requestId)).get();
+    if (existing) {
+      const message = this.db.select().from(channelMessage).where(eq(channelMessage.sequence, existing.sequence)).get();
+      return message && message.operationId === operationId && message.authorId === actor.id && message.createdAt >= actor.historyFrom && existing.requesterMembershipId === membershipId && existing.targetActorId === targetActorId && existing.expiresAt === expiresAt ? { message, replayed:true } : { error:"OPERATION_CONFLICT" as const };
+    }
+    const agent = this.db.select().from(channelAgent).where(eq(channelAgent.actorId, targetActorId)).get();
+    if (!agent?.active || Date.parse(agent.expiresAt) <= Date.now()) return { error:"AGENT_ACCESS_DENIED" as const };
+    const now = Date.now();
+    if (Date.parse(expiresAt) <= now || Date.parse(expiresAt) - now > 600000) return { error:"INVALID_WORK_EXPIRY" as const };
+    const payload: WorkRequest = { version:1,requestId,channelId,requesterUserId:actor.id,targetActorId,capability:"health-check",createdAt:new Date(now).toISOString(),expiresAt };
+    return this.ctx.storage.transactionSync(() => {
+      const result = this.writeMessage(channelId, actor, operationId, "Health check requested for " + agent.name + ". Expires " + expiresAt, "work_request", payload);
+      if (!result) return { error:"OPERATION_CONFLICT" as const };
+      this.db.insert(channelWork).values({requestId,sequence:result.message.sequence,requesterMembershipId:membershipId,requesterUserId:actor.id,targetActorId,expiresAt}).run();
+      return result;
+    });
+  }
+  agentWorkContext(channelId: string, actorId: string, secretHash: string, requestId: string) {
+    const value = this.agentActor(channelId, actorId, secretHash);
+    const work = this.db.select().from(channelWork).where(eq(channelWork.requestId, requestId)).get();
+    if (!value || !work || work.targetActorId !== actorId || work.sequence <= value.grant.historyAfter) return null;
+    const message = this.db.select().from(channelMessage).where(eq(channelMessage.sequence, work.sequence)).get();
+    return message?.kind === "work_request" ? { request:message.payload as WorkRequest,requesterMembershipId:work.requesterMembershipId,organizationId:value.config.organizationId } : null;
+  }
+  authorizeWork(channelId: string, actorId: string, secretHash: string, requestId: string) {
+    const ctx = this.agentWorkContext(channelId, actorId, secretHash, requestId);
+    if (!ctx) return { error:"WORK_ACCESS_DENIED" as const };
+    if (Date.parse(ctx.request.expiresAt) <= Date.now()) return { error:"REQUEST_EXPIRED" as const };
+    return { request:ctx.request };
+  }
+  agentWorkResult(channelId: string, actorId: string, secretHash: string, result: WorkResult) {
+    const value = this.agentActor(channelId, actorId, secretHash);
+    const ctx = this.agentWorkContext(channelId, actorId, secretHash, result.requestId);
+    if (!value || !ctx) return { error:"WORK_ACCESS_DENIED" as const };
+    const text = "Health check " + result.state + " · " + result.environment + " · " + result.reason + " · execution count " + result.executionCount + (result.diagnostics ? " · " + result.diagnostics.platform + "/" + result.diagnostics.architecture + " · " + result.diagnostics.runtime : "");
+    const written = this.writeMessage(channelId,value.actor,"result-"+result.requestId,text,"work_result",result);
+    return written ?? {error:"OPERATION_CONFLICT" as const};
   }
 
 }

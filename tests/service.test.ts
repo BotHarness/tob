@@ -23,7 +23,7 @@ it("migrates both real SQLite bindings and repeated migrations keep data", async
   await applyD1Migrations(env.INSTANCE_DB, env.TEST_MIGRATIONS);
   const ready = await request("/readyz");
   expect(ready.status).toBe(200);
-  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 5, orgSchemaVersion: 4, channelSchemaVersion: 3, businessEnabled: true });
+  expect(await ready.json()).toMatchObject({ ready: true, d1SchemaVersion: 5, orgSchemaVersion: 4, channelSchemaVersion: 4, businessEnabled: true });
   expect(await env.INSTANCE_DB.prepare("SELECT config_version FROM instance_config").first("config_version")).toBe(7);
   await expect(env.INSTANCE_DB.prepare("INSERT INTO instance_config VALUES (2,'admin_only','admin_only',1)").run()).rejects.toThrow();
 });
@@ -767,4 +767,57 @@ it('credential revoked while issuer verification yields cannot commit a later Ag
   });
   expect((await f.agentCall(a.actorId, 'POST', { text:'Must never commit' })).status).toBe(403);
   expect(await (await f.call(f.base + '/messages')).json()).toMatchObject({messages:[]});
+});
+
+async function workFixture() {
+  const f=await agentFixture();
+  const a=await (await f.issueAgent()).json() as {actorId:string};
+  const expiresAt=new Date(Date.now()+300000).toISOString();
+  const input={targetActorId:a.actorId,capability:'health-check',expiresAt};
+  const create=(data:unknown=input,key='work-request-operation-0001',user='user_a')=>f.call(f.base+'/work-requests',user,'POST',data,key);
+  const agent=(id:string,action='authorize',body?:unknown,actorId=a.actorId)=>request('/api/agent-channels/'+f.channel.channelId+'/work-requests/'+id+'/'+action,{method:'POST',headers:{Authorization:'Bearer tob_agent_'+actorId+'.'+f.secret,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+  return {...f,a,input,create,workAgent:agent};
+}
+it('structured work requests and results commit once with authenticated authors and survive eviction',async()=>{
+ const f=await workFixture();const r=await f.create();expect(r.status).toBe(200);
+ const v=await r.json() as {message:{payload:{requestId:string}}};const id=v.message.payload.requestId;
+ expect(v).toMatchObject({replayed:false,message:{kind:'work_request',authorType:'human',authorId:'user_a',payload:{requesterUserId:'user_a',targetActorId:f.a.actorId,capability:'health-check'}}});
+ await evictDurableObject(env.CHANNELS.getByName(f.channel.channelId));
+ expect(await (await f.create()).json()).toMatchObject({replayed:true,message:{sequence:1}});
+ expect((await f.create({...f.input,expiresAt:new Date(Date.now()+200000).toISOString()})).status).toBe(409);
+ expect(await (await f.workAgent(id)).json()).toMatchObject({request:{requestId:id,requesterUserId:'user_a'}});
+ const result={version:1,requestId:id,state:'completed',environment:'reference-a',executionCount:1,reason:'OK',diagnostics:{platform:'linux',architecture:'x64',runtime:'v24.21.0'}};
+ expect(await (await f.workAgent(id,'result',result)).json()).toMatchObject({replayed:false,message:{sequence:2,kind:'work_result',authorId:f.a.actorId}});
+ expect(await (await f.workAgent(id,'result',result)).json()).toMatchObject({replayed:true,message:{sequence:2}});
+ expect((await f.workAgent(id,'result',{...result,environment:'changed'})).status).toBe(409);
+ expect(await (await f.call(f.base+'/messages')).json()).toMatchObject({messages:[{kind:'work_request'},{kind:'work_result'}]});
+});
+it('work rejects forged source, unbounded execution input, wrong target and expired authorization',async()=>{
+ const f=await workFixture();
+ for(const extra of [{requesterUserId:'user_b'},{shell:'echo hi'},{capability:'shell'},{expiresAt:new Date(Date.now()+700000).toISOString()}])expect((await f.create({...f.input,...extra})).status).toBe(400);
+ const v=await (await f.create()).json() as {message:{payload:{requestId:string}}};const id=v.message.payload.requestId;
+ const other=await (await f.issueAgent('other','another-agent-key-0001')).json() as {actorId:string};
+ expect((await f.workAgent(id,'authorize',undefined,other.actorId)).status).toBe(403);
+ expect((await f.workAgent('wr_'+'a'.repeat(64))).status).toBe(403);
+ await runInDurableObject(env.CHANNELS.getByName(f.channel.channelId),(_i,s)=>{s.storage.sql.exec("UPDATE channel_message SET payload=json_set(payload,'$.expiresAt','2000-01-01T00:00:00.000Z') WHERE kind='work_request'");});
+ expect(await (await f.workAgent(id)).json()).toEqual({error:{code:'REQUEST_EXPIRED'}});
+});
+it('member requests do not inherit owner authority and membership removal or rejoin invalidates work',async()=>{
+ const f=await workFixture();
+ f.members.push({id:'om_member',user_id:'user_b',organization_id:'org_invites',status:'active',role:{slug:'member'},created_at:'2026-01-01T00:00:00Z'});
+ const r=await f.create(f.input,'member-work-operation-0001','user_b');expect(r.status).toBe(200);
+ const v=await r.json() as {message:{payload:{requestId:string}}};const id=v.message.payload.requestId;
+ expect((await f.workAgent(id)).status).toBe(200);
+ f.members[1].status='inactive';expect(await (await f.workAgent(id)).json()).toEqual({error:{code:'REQUESTER_ACCESS_DENIED'}});
+ f.members[1].status='active';f.members[1].id='om_rejoined';expect((await f.workAgent(id)).status).toBe(403);
+});
+it('revocation during work authorization yields no new start approval or result',async()=>{
+ const f=await workFixture();const v=await(await f.create()).json() as {message:{payload:{requestId:string}}};const id=v.message.payload.requestId;
+ const provider=vi.mocked(globalThis.fetch).getMockImplementation()!;let checks=0;
+ vi.mocked(globalThis.fetch).mockImplementation(async(input,init)=>{
+  if(String(input).includes('/organization_memberships?')&&++checks===2) await env.CHANNELS.getByName(f.channel.channelId).revokeAgent(f.channel.channelId,{id:'user_a',type:'human',organizationId:'org_invites',historyFrom:'1970-01-01T00:00:00.000Z'},f.a.actorId);
+  return provider(input,init);
+ });
+ expect((await f.workAgent(id)).status).toBe(403);
+ expect((await f.workAgent(id,'result',{version:1,requestId:id,state:'rejected',environment:'reference',executionCount:0,reason:'LOCAL_POLICY_DENIED'})).status).toBe(403);
 });

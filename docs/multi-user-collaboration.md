@@ -56,3 +56,7 @@ This completes the narrow HTTP channel sub-slice, not T1/T2 or the overall goal.
 ## Channel guests qualified; next Agent interaction
 
 [Channel guest native continuation](channel-guests.md#native-uat-verification--2026-10-18-jst) passed phone invite/accept/send, independent CLI boundaries, refresh/restart, revoked old-session refusal and owner revoke. [Agent interaction](channel-agents.md) is now the active sub-slice: independent channel-scoped identity and harmless reply, with credentials separate from local work authorization. Agent organization-wide membership, WebSocket, fixed work, two-Host communication and group-channel clarification remain outstanding.
+
+## Fixed work request continuation
+
+The channel credential/echo sub-slice is qualified in UAT and the phone. Next, [fixed health checks](agent-health-check.md) separate authenticated message requests from operator-granted local work. The initial check has a durable execution/result ledger and no arbitrary shell command. Phone/CLI and native UAT gates precede extending this owner into the two-isolated-Host path; WebSocket and group-channel bridge semantics remain separate.

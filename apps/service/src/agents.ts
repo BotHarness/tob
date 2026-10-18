@@ -40,7 +40,7 @@ export const ownerAgents = new Hono<{ Bindings: Env }>()
     return c.json(result);
   });
 
-async function authenticatedAgent(env: Env, header: string | undefined, channelId: string) {
+export async function authenticatedAgent(env: Env, header: string | undefined, channelId: string) {
   const parsed = /^Bearer tob_agent_(ag_[a-f0-9]{64})\.([a-f0-9]{64})$/.exec(header ?? "");
   if (!parsed || !/^ch_[a-f0-9]{64}$/.test(channelId)) throw new AccessError("AGENT_ACCESS_DENIED", 403);
   const [, actorId, secret] = parsed;

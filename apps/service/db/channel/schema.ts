@@ -14,8 +14,19 @@ export const channelMessage = sqliteTable("channel_message", {
   authorType: text("author_type", { enum: ["human", "agent"] }).notNull(),
   operationId: text("operation_id").notNull(),
   text: text("text").notNull(),
+  kind: text("kind", { enum: ["text", "work_request", "work_result"] }).notNull().default("text"),
+  payload: text("payload", { mode: "json" }).$type<import("../../../../packages/contracts/work").WorkRequest | import("../../../../packages/contracts/work").WorkResult>(),
   createdAt: text("created_at").notNull(),
 }, t => [uniqueIndex("message_author_operation").on(t.authorType, t.authorId, t.operationId)]);
+
+export const channelWork = sqliteTable("channel_work", {
+  requestId: text("request_id").primaryKey(),
+  sequence: integer("sequence").notNull().unique(),
+  requesterMembershipId: text("requester_membership_id").notNull(),
+  requesterUserId: text("requester_user_id").notNull(),
+  targetActorId: text("target_actor_id").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
 
 export const channelInvitation = sqliteTable("channel_invitation", {
   invitationId: text("invitation_id").primaryKey(),

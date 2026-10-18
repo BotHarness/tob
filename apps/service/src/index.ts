@@ -11,6 +11,7 @@ import { channels } from "./channels";
 import { invitations, organizationInvitations } from "./invitations";
 
 import { ownerAgents, agentMessages } from "./agents";
+import { humanWork, agentWork } from "./work";
 import { ownerGuestInvitations, guestInvitations, guestChannels } from "./guests";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -72,7 +73,7 @@ const withIdentity = api.get("/api/me", async (c) => {
   // reserved so an ordinary organization.create request cannot occupy it.
   return c.json(await createOrganization(c.env, identity.userId, "default-workspace-v1", "My workspace", "user.default-organization"));
 });
-const withOrganizations = withIdentity.route("/api/organizations", organizations).route("/api/organizations", channels).route("/api/organizations", organizationInvitations).route("/api/invitations", invitations).route("/api/organizations", ownerGuestInvitations).route("/api/channel-invitations", guestInvitations).route("/api/guest-channels", guestChannels).route("/api/organizations", ownerAgents).route("/api/agent-channels", agentMessages);
+const withOrganizations = withIdentity.route("/api/organizations", organizations).route("/api/organizations", channels).route("/api/organizations", organizationInvitations).route("/api/invitations", invitations).route("/api/organizations", ownerGuestInvitations).route("/api/channel-invitations", guestInvitations).route("/api/guest-channels", guestChannels).route("/api/organizations", ownerAgents).route("/api/agent-channels", agentMessages).route("/api/organizations", humanWork).route("/api/agent-channels", agentWork);
 // No public bootstrap route; unrelated business commands remain closed.
 app.all("/api/*", (c) => c.json({ error: { code: "FEATURE_NOT_AVAILABLE" } }, 503));
 app.notFound((c) => c.json({ error: { code: "NOT_FOUND" } }, 404));

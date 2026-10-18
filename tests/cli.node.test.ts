@@ -277,3 +277,15 @@ test('Agent create persists a private stable credential before network and retri
  chmodSync(result.credentialFile,0o600);const link=join(root,'agent-link.json');symlinkSync(result.credentialFile,link);
  await fails(execute(['agent-channel','history','--credential-file',link],rt),'SYMLINK_REFUSED');
 });
+
+test('work request CLI carries only fixed target/expiry and stable operation through selected organization',async()=>{
+ await setup();const channel='ch_'+'a'.repeat(64),agent='ag_'+'b'.repeat(64),expiresAt=new Date(Date.now()+300000).toISOString();
+ const run=()=>execute(['work','request','--server',config.server,'--channel',channel,'--agent',agent,'--expires-at',expiresAt,'--operation','fixed-work-cli-0001'],rt);
+ await fails(run(),'ORGANIZATION_TOKEN_REQUIRED');orgSelected='org_fixture';await command('refresh');
+ const prior=globalThis.fetch;let sent=0;
+ globalThis.fetch=async(url,init)=>{
+  if(String(url).endsWith('/work-requests')){sent++;assert.equal(String(url),config.server+'/api/organizations/org_fixture/channels/'+channel+'/work-requests');assert.deepEqual(JSON.parse(String(init?.body)),{targetActorId:agent,capability:'health-check',expiresAt});assert.equal(new Headers(init?.headers).get('Idempotency-Key'),'fixed-work-cli-0001');return Response.json({replayed:sent>1});}
+  return prior(url,init);
+ };
+ assert.deepEqual(await run(),{replayed:false});assert.deepEqual(await run(),{replayed:true});
+});

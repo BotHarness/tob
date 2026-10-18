@@ -163,3 +163,5 @@ Organization member invitations (UAT slice): [API, CLI, recovery and verificatio
 Direct channel guests (next UAT candidate): [isolated guest grants, CLI and acceptance](docs/channel-guests.md). `channel-invite` manages invitations; `guest-channel` opens only accepted channels without joining their organization. This initial path uses the existing user's in-app inbox, with no email delivery claim.
 
 Agent interaction contract and CLI: [Channel Agents](docs/channel-agents.md).
+
+- [Fixed Agent health-check request and local execution contract](docs/agent-health-check.md) — T3 continuation, UAT qualification pending.

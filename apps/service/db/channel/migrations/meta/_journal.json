@@ -22,6 +22,13 @@
       "when": 1792285033378,
       "tag": "0002_grey_strong_guy",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792287189376,
+      "tag": "0003_steep_brood",
+      "breakpoints": true
     }
   ]
 }
