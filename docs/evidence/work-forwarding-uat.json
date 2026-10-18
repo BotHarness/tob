@@ -1,0 +1,13 @@
+{
+  "releaseSha": "864b16d85a055397e255d012042bec0b07a9964e",
+  "originalHumanPreserved": true,
+  "deadlineAndCapabilityUnchanged": true,
+  "singleChildReplay": true,
+  "independentProcessCompletedOnce": true,
+  "freshProcessReplayExecutedZero": true,
+  "parentExecutionRefused": true,
+  "secondHopRefused": true,
+  "localPolicyCheckedOriginalHuman": true,
+  "exactSixMessages": true,
+  "bothTestCredentialsRevoked": true
+}

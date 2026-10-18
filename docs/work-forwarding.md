@@ -37,3 +37,11 @@ After accepting forwarded work, do not downgrade to an older Worker that ignores
 Local Worker tests exercise one-hop/author/expiry restrictions, canonical replay after DO eviction, execution-versus-forward races, conflicting concurrent targets, atomic rollback, original membership loss/rejoin and revocation during provider waits. Node tests exercise the public CLI/discovery boundary, visible-author parsing, original-Human local policy and local ledger replay.
 
 Real UAT forwarding and independent-process execution are pending. DSH Messaging/Runtime integration, model-driven A, two isolated Hosts, automatic WebSocket delivery and the complete mobile-to-A-to-B scenario remain pending. Keep T4 open. No Prod or merge.
+
+## Real UAT protocol qualification — 2026-10-18 JST
+
+Runtime `864b16d85a055397e255d012042bec0b07a9964e`, Worker `bc7ed0f3-6409-4a1e-8680-a56bb1a594c2`, schemas D1/Org/Channel 5/4/5 passed guarded deployment smoke. Exact-runtime CI [39089599338](https://github.com/BotHarness/tob/actions/runs/39089599338) passed.
+
+Using the existing synthetic ordinary users and public CLI, the member submitted a request to A; a separate CLI process forwarded it to B; another Node process executed B's fixed check and returned its result. Original Human, capability and deadline matched the parent. An identical forward returned the same child. A fresh B process replay executed zero additional checks. A's parent execution and B's second hop were refused. A second request whose original Human was excluded by B's local policy produced `LOCAL_POLICY_DENIED` with zero execution. CLI readback found exactly six correlated messages (two parents, two children, two results). Both test credentials were revoked and confirmed unusable; the users' prior organization selections were restored.
+
+[Sanitized assertions](evidence/work-forwarding-uat.json) record this bounded result. No WorkOS registration/settings changes, Human account changes, new native window, Prod or merge. This is public-protocol/independent-process evidence, **not** two DSH Hosts, model-driven forwarding or a new mobile UI run. T4 remains active for those owning-module/runtime seams.

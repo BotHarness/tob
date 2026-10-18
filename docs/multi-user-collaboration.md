@@ -60,3 +60,7 @@ This completes the narrow HTTP channel sub-slice, not T1/T2 or the overall goal.
 ## Fixed work request continuation
 
 The channel credential/echo sub-slice is qualified in UAT and the phone. Next, [fixed health checks](agent-health-check.md) separate authenticated message requests from operator-granted local work. The initial check has a durable execution/result ledger and no arbitrary shell command. Phone/CLI and native UAT gates precede extending this owner into the two-isolated-Host path; WebSocket and group-channel bridge semantics remain separate.
+
+## One-hop protocol qualified; DSH Host integration next
+
+[Draft #24](https://github.com/BotHarness/tob/pull/24) adds [bounded forwarding](work-forwarding.md). UAT runtime864b16d preserved the original member/deadline/capability across A→B, returned B's result to the same channel, rejected local permission loss and second hops, and replayed without another execution. The cloud durably chooses execution or forwarding per parent. Public CLI/independent processes are qualified; DSH Messaging/Runtime binding, real model A and two isolated Hosts remain next. Do not count this preparation as completed T4 or the overall goal.
