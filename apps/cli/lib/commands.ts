@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { agentCommand } from "./agent.ts";
+import { parseWorkInput } from "../../../packages/contracts/work.ts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -28,6 +29,7 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
     for (const path of ["/healthz", "/readyz"]) { const r = await request(new URL(path, url).href); if (!r.ok) throw new ClientError("HEALTH_CHECK_FAILED"); outputs.push(await responseJson(r)); }
     return { health: outputs[0], readiness: outputs[1] };
   }
+  if (args[0] === "agent-health") return (await import("../../../packages/reference/health.ts")).healthCommand(args);
   if (args[0] === "agent-channel") return agentCommand(args, rt.signal);
   const store = new Store(rt.directory ?? join(homedir(), ".config/tob/cli"));
   if (args[0] === "instance" && args[1] === "import" && (args.length === 3 || (args.length === 4 && args[3] === "--replace"))) {
@@ -52,13 +54,14 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
   const isGuest = args[0] === "guest-channel";
   const isGuestInvite = args[0] === "channel-invite";
   const isAgent = args[0] === "agent";
-  const scoped = isAgent || isOrg || isChannel || isInvitation || isGuest || isGuestInvite;
+  const isWork = args[0] === "work";
+  const scoped = isWork || isAgent || isOrg || isChannel || isInvitation || isGuest || isGuestInvite;
   const orgCommand = scoped ? args[1] : undefined;
   const options: Record<string, string> = {};
   if (scoped) {
-    if (!(isAgent ? ["list", "create", "revoke"] : isOrg ? ["list", "create", "use", "show", "update"] : (isInvitation || isGuestInvite) ? ["inbox", "list", "send", "accept", "revoke"] : isGuest ? ["list", "show", "history", "send"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
+    if (!(isWork ? ["request"] : isAgent ? ["list", "create", "revoke"] : isOrg ? ["list", "create", "use", "show", "update"] : (isInvitation || isGuestInvite) ? ["inbox", "list", "send", "accept", "revoke"] : isGuest ? ["list", "show", "history", "send"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
     for (let n = 2; n < args.length; n += 2) {
-      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file", "--email", "--channel"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
+      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file", "--email", "--channel", "--agent", "--expires-at"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
       options[args[n]] = args[n+1];
     }
   }
@@ -149,6 +152,14 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
         }
         return value;
       };
+      if (isWork) {
+        const orgId = options["--org"] ?? i.organizationId;
+        const channel = options["--channel"];
+        if (!orgId || orgId !== i.organizationId) throw new ClientError("ORGANIZATION_TOKEN_REQUIRED");
+        if (!channel || !/^ch_[a-f0-9]{64}$/.test(channel) || !/^[A-Za-z0-9_-]{16,100}$/.test(options["--operation"] ?? "")) throw new ClientError("USAGE");
+        const input = parseWorkInput({ targetActorId: options["--agent"], capability: "health-check", expiresAt: options["--expires-at"] });
+        return call("/"+orgId+"/channels/"+channel+"/work-requests", { method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":options["--operation"]},body:JSON.stringify(input) });
+      }
       if (isAgent) {
         const orgId = options["--org"] ?? i.organizationId;
         const channelId = options["--channel"];

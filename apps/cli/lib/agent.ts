@@ -4,7 +4,7 @@ import { ClientError } from "../../../packages/contracts/instance.ts";
 import { parseAgentCredential } from "../../../packages/contracts/agent.ts";
 import { checkDiscovery, request, responseJson } from "../../../packages/client/connection.ts";
 
-export function readAgentFile(path: string) {
+export function readPrivateJson(path: string): unknown {
   if (!isAbsolute(path) || typeof process.getuid !== "function") throw new ClientError("PRIVATE_CREDENTIAL_FILE_REQUIRED");
   for (let p = resolve(path);; p = dirname(p)) {
     if (lstatSync(p).isSymbolicLink()) throw new ClientError("SYMLINK_REFUSED");
@@ -14,9 +14,10 @@ export function readAgentFile(path: string) {
   try {
     const s = fstatSync(fd);
     if (!s.isFile() || s.uid !== process.getuid() || (s.mode & 0o077) || s.size > 20000) throw new ClientError("PRIVATE_CREDENTIAL_FILE_REQUIRED");
-    return parseAgentCredential(JSON.parse(readFileSync(fd, "utf8")));
+    return JSON.parse(readFileSync(fd, "utf8"));
   } finally { closeSync(fd); }
 }
+export const readAgentFile = (path: string) => parseAgentCredential(readPrivateJson(path));
 export async function agentCommand(args: string[], signal?: AbortSignal) {
   const command = args[1]; const options: Record<string, string> = {};
   if (!["history", "send"].includes(command)) throw new ClientError("USAGE");
