@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ClientError, connectionKey, serverOrigin, type InstanceConfig } from "../../../packages/contracts/instance.ts";
@@ -43,18 +44,20 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
     });
   }
   const isOrg = args[0] === "org";
-  const orgCommand = isOrg ? args[1] : undefined;
+  const isChannel = args[0] === "channel";
+  const scoped = isOrg || isChannel;
+  const orgCommand = scoped ? args[1] : undefined;
   const options: Record<string, string> = {};
-  if (isOrg) {
-    if (!["list", "create", "use", "show", "update"].includes(orgCommand ?? "")) throw new ClientError("USAGE");
+  if (scoped) {
+    if (!(isOrg ? ["list", "create", "use", "show", "update"] : ["list", "create", "show", "history", "send"]).includes(orgCommand ?? "")) throw new ClientError("USAGE");
     for (let n = 2; n < args.length; n += 2) {
-      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
+      if (!["--server", "--id", "--name", "--operation", "--description", "--version", "--after", "--org", "--text-file"].includes(args[n]) || args[n+1] === undefined || options[args[n]] !== undefined) throw new ClientError("USAGE");
       options[args[n]] = args[n+1];
     }
   }
-  const command = isOrg ? "org" : args[0];
-  const server = isOrg ? options["--server"] : args[2];
-  if ((!isOrg && (!["login", "whoami", "refresh", "logout", "onboard"].includes(command) || args[1] !== "--server" || args.length !== 3)) || !server) throw new ClientError("USAGE");
+  const command = args[0];
+  const server = scoped ? options["--server"] : args[2];
+  if ((!scoped && (!["login", "whoami", "refresh", "logout", "onboard"].includes(command) || args[1] !== "--server" || args.length !== 3)) || !server) throw new ClientError("USAGE");
   serverOrigin(server);
   const c = store.configs().find(c => c.server === server);
   if (!c) throw new ClientError("INSTANCE_NOT_IMPORTED");
@@ -127,7 +130,7 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
       }
       if (!session) throw new ClientError("LOGIN_EXPIRED");
     }
-    if (isOrg) {
+    if (scoped) {
       let i = await freshIdentity();
       const call = async (path: string, init: RequestInit = {}) => {
         await checkDiscovery(c, rt.signal);
@@ -139,6 +142,24 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
         }
         return value;
       };
+      if (isChannel) {
+        const orgId = options["--org"] ?? i.organizationId;
+        if (!orgId || !/^org_[A-Za-z0-9]+$/.test(orgId) || i.organizationId !== orgId) throw new ClientError("ORGANIZATION_TOKEN_REQUIRED");
+        const base = "/" + orgId + "/channels";
+        if (orgCommand === "list") return call(base + (options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : ""));
+        if (orgCommand === "create") {
+          if (!options["--name"] || !options["--operation"]) throw new ClientError("USAGE");
+          return call(base, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": options["--operation"] }, body: JSON.stringify({ name: options["--name"] }) });
+        }
+        const id = options["--id"];
+        if (!id || !/^ch_[a-f0-9]{64}$/.test(id)) throw new ClientError("INVALID_CHANNEL");
+        if (orgCommand === "show") return call(base + "/" + id);
+        if (orgCommand === "history") return call(base + "/" + id + "/messages?after=" + encodeURIComponent(options["--after"] ?? "0"));
+        if (!options["--text-file"] || !options["--operation"]) throw new ClientError("USAGE");
+        let text: string; try { text = readFileSync(options["--text-file"], "utf8"); } catch { throw new ClientError("MESSAGE_FILE_UNREADABLE"); }
+        if (!text.trim() || text.length > 4000) throw new ClientError("INVALID_CHANNEL_INPUT");
+        return call(base + "/" + id + "/messages", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": options["--operation"] }, body: JSON.stringify({ text }) });
+      }
       if (orgCommand === "list") return call(options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : "");
       if (orgCommand === "create") {
         if (!options["--name"] || !options["--operation"]) throw new ClientError("USAGE");

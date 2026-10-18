@@ -15,6 +15,13 @@
       "when": 1792270853644,
       "tag": "0001_minor_skrulls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792276251463,
+      "tag": "0002_naive_medusa",
+      "breakpoints": true
     }
   ]
 }
