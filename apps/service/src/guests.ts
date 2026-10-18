@@ -95,11 +95,16 @@ export const guestChannels = new Hono<{ Bindings: Env }>()
   .use("*", limit)
   .get("/", async c => {
     const identity = await admit(c.req.header("Authorization"), c.env);
+    const organizationId = c.req.query("organizationId");
+    if (organizationId !== undefined && !/^org_[A-Za-z0-9]+$/.test(organizationId)) throw new AccessError("INVALID_ORGANIZATION", 400);
     const rows = await drizzle(c.env.INSTANCE_DB).select().from(channelInvitationDirectory).where(and(eq(channelInvitationDirectory.acceptedUserId, identity.userId), gt(channelInvitationDirectory.invitationId, cursor(c.req.query("after"))))).orderBy(asc(channelInvitationDirectory.invitationId)).limit(51).all();
     const channels = [];
     for (const row of rows.slice(0, 50)) {
       const view = await c.env.CHANNELS.getByName(row.channelId).guestView(row.channelId, identity.userId);
-      if (view?.invitationId === row.invitationId && await localOrg(c.env, view.organizationId)) channels.push(view);
+      if (view?.invitationId === row.invitationId && (!organizationId || view.organizationId === organizationId) && await localOrg(c.env, view.organizationId)) {
+        const org = await c.env.ORGS.getByName(view.organizationId).read(view.organizationId);
+        channels.push({ ...view, organizationName: org.name });
+      }
     }
     return c.json({ channels, nextCursor: rows.length > 50 ? rows[49].invitationId : null });
   })

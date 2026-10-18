@@ -607,7 +607,11 @@ it('a channel guest joins without organization membership and can only read/writ
   expect(await (await f.guest('/organizations')).json()).toMatchObject({ organizations: [] });
   for (const path of ['/organizations/org_invites/access', '/organizations/org_invites', '/organizations/org_invites/channels', '/guest-channels/' + f.sibling.channelId, '/guest-channels/' + f.sibling.channelId + '/messages']) expect((await f.guest(path)).status).toBe(403);
   const list = await (await f.guest('/guest-channels')).json();
-  expect(list).toMatchObject({ channels: [{ channelId: f.channel.channelId, access: 'guest', historyAfter: 1 }], nextCursor: null });
+  expect(list).toMatchObject({ channels: [{ channelId: f.channel.channelId, organizationName: 'Invitation workspace', access: 'guest', historyAfter: 1 }], nextCursor: null });
+  expect(await (await f.guest('/guest-channels?organizationId=org_invites')).json()).toMatchObject({ channels: [{ channelId: f.channel.channelId, organizationName: 'Invitation workspace' }] });
+  expect(await (await f.guest('/guest-channels?organizationId=org_other')).json()).toMatchObject({ channels: [] });
+  expect(await (await f.guest('/guest-channels?organizationId=org_invites', 'user_c')).json()).toMatchObject({ channels: [] });
+  expect((await f.guest('/guest-channels?organizationId=invalid')).status).toBe(400);
   const path = '/guest-channels/' + f.channel.channelId + '/messages';
   expect(await (await f.guest(path)).json()).toMatchObject({ messages: [], nextCursor: 1 });
   expect((await f.guest(path, 'user_b', 'POST', { text: 'Guest text', authorId: 'user_a' })).status).toBe(400);

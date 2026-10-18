@@ -62,3 +62,11 @@ The linked PR evidence records intermediate runtime provenance and first failure
 ## Confirmed invitation scope
 
 The Human clarified that a channel-level invitation admits its recipient only to that channel. It does not grant organization membership, organization directory access or access to other channels. “Invite group channel” is not a group-to-group bridge or federation requirement. Existing organization members still see all organization channels; the guest grant is the only additional scope needed for this slice.
+
+## Workspace directory projection
+
+`GET /api/guest-channels` now includes `organizationName` on each currently authorized channel. The service checks the current Channel DO grant and local organization before reading its name from Org DO. It never enumerates other organizations or adds WorkOS membership. `?organizationId=org_…` optionally narrows the same authorized projection; malformed IDs return 400 and unrelated organizations return no channels.
+
+`node apps/cli/tob.mjs guest-channel list --server "$TOB_SERVER" --org "$TOB_ORG"` exposes the same filter. `--after` remains supported. Cursors advance through the recipient directory, so an empty page can still have a next cursor; clients must offer continuation until it is null. Revoked grants disappear on the next listing. No schema migration is needed.
+
+Source verification: 62 Worker tests and 20 CLI tests pass, covering authorized metadata, filter, unrelated user/org and revocation. Deployment/readback and mobile native drawer acceptance for this increment are pending.

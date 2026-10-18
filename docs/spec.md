@@ -339,3 +339,9 @@ See [channel guests](channel-guests.md) for the bounded next slice. Channel DO o
 ### Channel Agent interaction sub-slice
 
 The autonomous UAT goal now proceeds through [channel-scoped Agent credentials and reply](channel-agents.md), after [direct channel guest native verification](channel-guests.md#native-uat-verification--2026-10-18-jst). One initial credential hash per Channel Agent, fixed read/send scopes and a join sequence floor are the implemented narrow model; separate rotating credentials, organization-wide Agents and management roles remain target extensions. This increment does not claim work execution, WebSocket, two-Host completion or T3 closure.
+
+### Unified mobile workspace drawer increment
+
+The shared mobile drawer groups paired computers and cloud workspaces. Its cloud projection combines current membership with authorized channel-guest organization identity, deduplicated per instance/org with membership taking precedence. Guests see the organization identity but only granted channels; selecting their row never joins/selects an organization. See [guest directory contract](channel-guests.md#workspace-directory-projection).
+
+Acceptance: CLI and phone agree on current authorized organization/channel identity; two instances remain separate; pagination handles empty pages; guest selection lists only that organization's granted channels; no membership or sibling-channel access appears; revocation removes the guest-only workspace on refresh; switching back restores the paired Host view. Test loading/error/retry and default/intermediate/maximum text in light/dark. Source tests are verified; this increment's UAT and native evidence remain pending. Existing T1 and full collaboration gates stay open.

@@ -221,7 +221,15 @@ export async function execute(args: string[], rt: Runtime): Promise<unknown> {
       }
       if (isGuest) {
         const prefix = "/api/guest-channels";
-        if (orgCommand === "list") return call(options["--after"] ? "?after=" + encodeURIComponent(options["--after"]) : "", {}, prefix);
+        if (orgCommand === "list") {
+          const query = new URLSearchParams();
+          if (options["--after"]) query.set("after", options["--after"]);
+          if (options["--org"]) {
+            if (!/^org_[A-Za-z0-9]+$/.test(options["--org"])) throw new ClientError("INVALID_ORGANIZATION");
+            query.set("organizationId", options["--org"]);
+          }
+          return call(query.size ? "?" + query : "", {}, prefix);
+        }
         const id = options["--id"];
         if (!id || !/^ch_[a-f0-9]{64}$/.test(id)) throw new ClientError("INVALID_CHANNEL");
         if (orgCommand === "show") return call("/" + id, {}, prefix);
